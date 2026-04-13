@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESPBasto — Muted Industrial (Light)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #6a6a66;
+    display: flex; flex-direction: column; align-items: center;
+    font-family: 'Rajdhani', sans-serif; color: #222; padding: 20px; min-height: 100vh;
+  }
+  h1 { color: #d0d8d8; font-size: 18px; margin-bottom: 6px; font-weight: 600; letter-spacing: 1px; }
+  .subtitle { color: #8a9494; font-size: 12px; margin-bottom: 24px; letter-spacing: 0.5px; }
+  .screens-row { display: flex; gap: 32px; flex-wrap: wrap; justify-content: center; margin-bottom: 32px; }
+  .screen-wrapper { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .screen-label {
+    color: #8a9494; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 1.5px; font-family: 'Share Tech Mono', monospace;
+  }
+
+  /* === PALETTE MUTED INDUSTRIAL LIGHT === */
+  :root {
+    --bg: #D8D8D2;                /* Fond principal gris très clair chaud */
+    --bg-light: #E0E0DA;          /* Fond légèrement plus clair */
+    --panel-dark: #272626;        /* Panneaux sombres */
+    --panel-mid: #363535;         /* Panneaux intermédiaires */
+    --panel-accent: #223B3B;      /* Panneau accent teal sombre */
+    --text-on-light: #1a1f20;     /* Texte foncé sur fond clair */
+    --text-on-light-dim: #3a4545; /* Texte secondaire sur fond clair */
+    --text-on-dark: #c8d0d0;      /* Texte clair sur fond sombre */
+    --text-on-dark-dim: #8a9a9a;  /* Texte secondaire sur fond sombre */
+    --accent-warm: #906D0C;       /* Or brun (alertes, chauffage actif) */
+    --accent-red: #8B3A3A;        /* Rouge éteint (erreurs) */
+    --accent-green: #3A6B5A;      /* Vert éteint (OK) */
+    --accent-teal: #4A7A7A;       /* Teal (accents) */
+    --divider: #b8b8b0;           /* Séparateurs sur fond clair */
+    --divider-dark: #3a3939;      /* Séparateurs sur fond sombre */
+    --chart-bg: #e8e8e0;          /* Fond chart blanc cassé */
+  }
+
+  /* === ÉCRAN 240x320 === */
+  .screen {
+    width: 240px; height: 320px;
+    background: var(--bg);
+    border-radius: 2px; overflow: hidden;
+    position: relative; display: flex; flex-direction: column;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+  }
+
+  /* === HEADER === */
+  .header {
+    height: 26px; background: var(--panel-dark);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 8px; flex-shrink: 0;
+  }
+  .header .title {
+    font-size: 10px; font-weight: 700; color: var(--text-on-dark-dim);
+    text-transform: uppercase; letter-spacing: 2px;
+    font-family: 'Share Tech Mono', monospace;
+  }
+  .header .indicators { display: flex; gap: 6px; align-items: center; font-size: 10px; }
+  .header .temp {
+    color: var(--text-on-dark); font-family: 'Share Tech Mono', monospace; font-size: 11px;
+  }
+  .header .heat { color: var(--accent-warm); font-size: 8px; animation: pulse 2s ease-in-out infinite; }
+  .header .conn { font-size: 6px; }
+  .header .conn.ok { color: var(--accent-green); }
+  .header .lock { color: var(--accent-red); font-size: 9px; }
+
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* === CONTENT === */
+  .content {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; padding: 6px 8px; gap: 5px; overflow: hidden;
+  }
+
+  /* === ACTION BAR === */
+  .action-bar {
+    height: 48px; background: var(--panel-dark);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 8px; flex-shrink: 0;
+  }
+
+  /* === BOUTONS === */
+  .btn {
+    background: var(--panel-mid); border: none; border-radius: 2px;
+    color: var(--text-on-dark-dim); font-size: 10px; font-weight: 700;
+    padding: 8px 12px; cursor: pointer;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    font-family: 'Share Tech Mono', monospace; transition: all 0.1s;
+  }
+  .btn:hover { background: #444; color: var(--text-on-dark); }
+  .btn:active { background: var(--panel-accent); }
+  .btn-start { background: var(--panel-accent); color: #7ab8a8; }
+  .btn-stop { background: #3a2a1a; color: #c89a3a; }
+  .btn-danger { background: #3a2020; color: #c07070; }
+  .btn-full { width: 100%; text-align: center; }
+  .btn-action { min-width: 96px; text-align: center; }
+
+  /* === TUILES MENU (sur fond clair) === */
+  .tile {
+    width: 100%; background: var(--panel-dark);
+    border-radius: 2px; padding: 10px 12px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .tile:hover { background: #303030; }
+  .tile:active { background: var(--panel-accent); }
+  .tile .tile-title {
+    font-size: 13px; font-weight: 700; color: var(--text-on-dark);
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+  .tile .tile-sub { font-size: 10px; color: var(--text-on-dark-dim); margin-top: 2px; }
+  .tile .tile-indicator {
+    float: right; font-size: 10px; color: var(--text-on-dark-dim);
+    font-family: 'Share Tech Mono', monospace; margin-top: 2px;
+  }
+  .tile.locked { opacity: 0.2; pointer-events: none; }
+
+  /* === INFO PANEL (sur fond clair) === */
+  .info-panel {
+    width: 100%; background: var(--panel-dark);
+    border-radius: 2px; padding: 5px 10px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .info-panel .info-label {
+    font-size: 9px; color: var(--text-on-dark-dim);
+    text-transform: uppercase; letter-spacing: 1px;
+    font-family: 'Share Tech Mono', monospace;
+  }
+  .info-panel .info-value {
+    font-size: 11px; color: var(--text-on-dark);
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  /* === LABEL SUR FOND CLAIR === */
+  .label-light {
+    font-size: 9px; color: var(--text-on-light-dim);
+    text-transform: uppercase; letter-spacing: 1.5px;
+    font-family: 'Share Tech Mono', monospace;
+    width: 100%; padding-left: 2px;
+  }
+
+  /* === ARC === */
+  .arc-container { position: relative; width: 130px; height: 130px; margin: 2px 0; }
+  .arc-svg { width: 130px; height: 130px; }
+  .arc-bg { fill: none; stroke: var(--divider); stroke-width: 8; stroke-linecap: butt; }
+  .arc-fg { fill: none; stroke-width: 8; stroke-linecap: butt; transition: stroke-dashoffset 0.5s, stroke 0.3s; }
+  .arc-fg.teal { stroke: var(--panel-accent); }
+  .arc-fg.warm { stroke: var(--accent-warm); }
+  .arc-fg.green { stroke: var(--accent-green); }
+  .arc-fg.red { stroke: var(--accent-red); }
+  .arc-labels {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%); text-align: center;
+  }
+  .arc-temp {
+    font-size: 28px; font-weight: 700; color: var(--text-on-light);
+    font-family: 'Share Tech Mono', monospace; letter-spacing: 1px;
+  }
+  .arc-target {
+    font-size: 9px; color: var(--text-on-light-dim); margin-top: 1px;
+    font-family: 'Share Tech Mono', monospace;
+  }
+  .arc-unit { font-size: 14px; color: var(--text-on-light-dim); }
+
+  /* === BARRE PROGRESSION === */
+  .progress-bar {
+    width: 200px; height: 6px;
+    background: var(--divider); border-radius: 0; overflow: hidden;
+  }
+  .progress-fill { height: 100%; border-radius: 0; transition: width 0.5s, background 0.3s; }
+  .progress-fill.teal { background: var(--panel-accent); }
+  .progress-fill.warm { background: var(--accent-warm); }
+  .progress-fill.red { background: var(--accent-red); }
+
+  /* === ADJUST ROW (sur fond clair) === */
+  .adjust-row { width: 100%; display: flex; flex-direction: column; gap: 3px; }
+  .adjust-controls { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .btn-adjust {
+    width: 48px; height: 32px;
+    background: var(--panel-dark); border: none; border-radius: 2px;
+    color: var(--text-on-dark); font-size: 16px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.1s; font-family: 'Rajdhani', sans-serif;
+  }
+  .btn-adjust:hover { background: #353434; }
+  .btn-adjust:active { background: var(--panel-accent); }
+  .adjust-value {
+    font-size: 18px; color: var(--text-on-light); font-weight: 700;
+    flex: 1; text-align: center;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  /* === TIMER === */
+  .timer-display {
+    font-size: 44px; font-weight: 400;
+    font-family: 'Share Tech Mono', monospace;
+    letter-spacing: 4px; margin: 4px 0;
+  }
+  .timer-display.dark { color: var(--text-on-light); }
+  .timer-display.warm { color: var(--accent-warm); }
+  .timer-display.red { color: var(--accent-red); }
+
+  /* === SPINNER === */
+  .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid var(--divider);
+    border-top: 3px solid var(--panel-dark);
+    border-radius: 50%; animation: spin 1.2s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .search-text {
+    color: var(--text-on-light-dim); font-size: 11px;
+    font-family: 'Share Tech Mono', monospace; letter-spacing: 2px;
+    animation: blink 2s ease-in-out infinite;
+  }
+  @keyframes blink { 0%,100% { opacity: 0.7; } 50% { opacity: 0.2; } }
+
+  /* === ALERT === */
+  .alert-card {
+    background: var(--panel-dark); border-radius: 2px;
+    padding: 14px 16px; width: 208px;
+  }
+  .alert-title {
+    color: #c07070; font-size: 13px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    font-family: 'Share Tech Mono', monospace; margin-bottom: 8px;
+  }
+  .alert-text {
+    color: var(--text-on-dark-dim); font-size: 11px; line-height: 1.6;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  /* === REACHED === */
+  .reached {
+    color: var(--accent-green); font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  /* === STATUS DOT === */
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  .status-dot.on { background: var(--accent-warm); }
+  .status-dot.ok { background: var(--accent-green); }
+  .status-dot.err { background: var(--accent-red); }
+</style>
+</head>
+<body>
+
+<h1>MUTED INDUSTRIAL — LIGHT</h1>
+<p class="subtitle">Fond gris-bleu acier • Panneaux charbon • Style VolosR</p>
+
+<div class="screens-row">
+
+  <!-- RECHERCHE -->
+  <div class="screen-wrapper">
+    <div class="screen-label">Recherche relais</div>
+    <div class="screen">
+      <div class="header">
+        <span class="title">WEBASTO</span>
+        <div class="indicators"></div>
+      </div>
+      <div class="content" style="justify-content: center; gap: 14px;">
+        <div class="spinner"></div>
+        <div class="search-text">SCANNING...</div>
+        <div style="font-size:9px; color: var(--text-on-light-dim); font-family: 'Share Tech Mono', monospace;">ESP-NOW BROADCAST</div>
+      </div>
+      <div class="action-bar"></div>
+    </div>
+  </div>
+
+  <!-- MENU OFF -->
+  <div class="screen-wrapper">
+    <div class="screen-label">Menu — OFF</div>
+    <div class="screen">
+      <div class="header">
+        <span class="title">WEBASTO</span>
+        <div class="indicators">
+          <span class="temp">21.5°</span>
+          <span class="status-dot ok"></span>
+        </div>
+      </div>
+      <div class="content" style="justify-content: flex-start; padding-top: 8px;">
+        <div class="tile">
+          <span class="tile-indicator">20.0°</span>
+          <div class="tile-title">Thermostat</div>
+          <div class="tile-sub">Hysteresis auto</div>
+        </div>
+        <div class="tile">
+          <span class="tile-indicator">30min</span>
+          <div class="tile-title">Minuteur</div>
+          <div class="tile-sub">Duree programmee</div>
+        </div>
+        <div class="tile">
+          <span class="tile-indicator">25.0°</span>
+          <div class="tile-title">Consigne</div>
+          <div class="tile-sub">Temperature cible</div>
+        </div>
+        <div style="flex:1;"></div>
+        <div class="info-panel">
+          <span class="info-label">STATUS</span>
+          <span class="info-value" style="color: var(--text-on-dark-dim);">IDLE</span>
+        </div>
+      </div>
+      <div class="action-bar"></div>
+    </div>
+  </div>
+
+  <!-- MENU ON -->
+  <div class="screen-wrapper">
+    <div class="screen-label">Menu — ON</div>
+    <div class="screen">
+      <div class="header">
+        <span class="title">WEBASTO</span>
+        <div class="indicators">
+          <span class="temp">21.5°</span>
+          <span class="status-dot on"></span>
+          <span class="status-dot ok"></span>
+        </div>
+      </div>
+      <div class="content" style="justify-content: flex-start; padding-top: 8px;">
+        <div class="tile">
+          <span class="tile-indicator" style="color: var(--accent-warm);">ACTIF</span>
+          <div class="tile-title">Thermostat</div>
+          <div class="tile-sub">Hysteresis auto</div>
+        </div>
+        <div class="tile">
+          <span class="tile-indicator">30min</span>
+          <div class="tile-title">Minuteur</div>
+          <div class="tile-sub">Duree programmee</div>
+        </div>
+        <div class="tile">
+          <span class="tile-indicator">25.0°</span>
+          <div class="tile-title">Consigne</div>
+          <div class="tile-sub">Temperature cible</div>
+        </div>
+        <div style="flex:1;"></div>
+        <div class="info-panel">
+          <span class="info-label">STATUS</span>
+          <span class="info-value" style="color: var(--accent-warm);">HEATING</span>
+        </div>
+      </div>
+      <div class="action-bar" style="justify-content: center;">
+        <button class="btn btn-danger btn-full">STOP</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MENU LOCKED -->
+  <div class="screen-wrapper">
+    <div class="screen-label">Menu — Verrouillé</div>
+    <div class="screen">
+      <div class="header">
+        <span class="title">WEBASTO</span>
+        <div class="indicators">
+          <span class="temp">21.5°</span>
+          <span class="lock">LCK</span>
+          <span class="status-dot ok"></span>
+        </div>
+      </div>
+      <div class="content" style="justify-content: flex-start; padding-top: 8px;">
+        <div class="tile locked"><div class="tile-title">Thermostat</div><div class="tile-sub">Hysteresis auto</div></div>
+        <div class="tile locked"><div class="tile-title">Minuteur</div><div class="tile-sub">Duree programmee</div></div>
+        <div class="tile locked"><div class="tile-title">Consigne</div><div class="tile-sub">Temperature cible</div></div>
+        <div style="flex:1;"></div>
+        <div class="info-panel">
+          <span class="info-label">STATUS</span>
+          <span class="info-value" style="color: var(--accent-red);">LOCKED</span>
+        </div>
+      </div>
+      <div class="action-bar"></div>
+    </div>
+  </div>
+</div>
+
+<div class="screens-row">
+
+  <!-- MODE A -->
+  <div class="screen-wrapper">
+    <div class="screen-label">Mode A — Thermostat</div>
+    <div class="screen">
+      <div class="header">
+        <span class="title">THERMOSTAT</span>
+        <div class="indicators">
+          <span class="status-dot on"></span>
+          <span class="status-dot ok"></span>
+        </div>
+      </div>
+      <div class="content" style="justify-content: flex-start; padding-top: 2px;">
+        <div class="arc-container">
+          <svg class="arc-svg" viewBox="0 0 130 130">
+            <circle class="arc-bg" cx="65" cy="65" r="54" stroke-dasharray="255" stroke-dashoffset="0" transform="rotate(135 65 65)" />
+            <circle class="arc-fg warm" cx="65" cy="65" r="54" stroke-dasharray="255" stroke-dashoffset="95" transform="rotate(135 65 65)" />
+          </svg>
+          <div class="arc-labels">
+            <div class="arc-temp">21.5<span class="arc-unit">°</span></div>
+            <div class="arc-target">SET 20.0°</div>
+          </div>
+        </div>
+        <div class="adjust-row">
+          <div class="label-light">Consigne</div>
+          <div class="adjust-controls">
+            <button class="btn-adjust">−</button>
+            <span class="adjust-value">20.0°</span>
+            <button class="btn-adjust">+</button>
+          </div>
+        </div>
+        <div class="adjust-row">
+          <div class="label-light">Hysteresis</div>
+          <div class="adjust-controls">
+            <button class="btn-adjust">−</button>
+            <span class="adjust-value">3°</span>
+            <button class="btn-adjust">+</button>
+          </div>
+        </div>
+      </div>
+      <div class="action-bar">
+        <button class="btn btn-action">RETOUR</button>
+        <button class="btn btn-action btn-stop">STOP</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODE B -->
+  <div class="screen-wrapper">
+    <div class="screen-label">Mode B — Minuteur</div>
+    <div class="screen">
+      <div class="header">
+        <span class="title">MINUTEUR</span>
+        <div class="indicators">
+          <span class="status-dot on"></span>
+          <span class="status-dot ok"></span>
+        </div>
+      </div>
+      <div class="content" style="justify-content: flex-start; padding-top: 10px;">
+        <div class="timer-display dark">25:42</div>
+        <div class="progress-bar"><div class="progress-fill teal" style="width: 65%;"></div></div>
+        <div class="info-panel" style="margin-top: 6px;">
+          <span class="info-label">ELAPSED</span>
+          <span class="info-value">04:18</span>
+        </div>
+        <div style="height: 6px;"></div>
+        <div class="adjust-row">
+          <div class="label-light">Duree</div>
+          <div class="adjust-controls">
+            <button class="btn-adjust" style="opacity:0.2">−</button>
+            <span class="adjust-value" style="opacity:0.2">30 min</span>
+            <button class="btn-adjust" style="opacity:0.2">+</button>
+          </div>
+        </div>
+      </div>
+      <div class="action-bar">
+        <button class="btn btn-action">RETOUR</button>
+        <button class="btn btn-action btn-stop">STOP</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODE B FIN -->
+  <div class="screen-wrapper">
+    <div class="screen-label">Mode B — Fin</div>
+    <div class="screen">
+      <div class="header">
+        <span class="title">MINUTEUR</span>
+        <div class="indicators">
+          <span class="status-dot on"></span>
+          <span class="status-dot ok"></span>
+        </div>
+      </div>
+      <div class="content" style="justify-content: flex-start; padding-top: 10px;">
+        <div class="timer-display red">00:47</div>
+        <div class="progress-bar"><div class="progress-fill red" style="width: 4%;"></div></div>
+        <div class="info-panel" style="margin-top: 6px;">
+          <span class="info-label">ELAPSED</span>
+          <span class="info-value">29:13</span>
+        </div>
+        <div style="height: 6px;"></div>
+        <div class="adjust-row">
+          <div class="label-light">Duree</div>
+          <div class="adjust-controls">
+            <button class="btn-adjust" style="opacity:0.2">−</button>
+            <span class="adjust-value" style="opacity:0.2">30 min</span>
+            <button class="btn-adjust" style="opacity:0.2">+</button>
+          </div>
+        </div>
+      </div>
+      <div class="action-bar">
+        <button class="btn btn-action">RETOUR</button>
+        <button class="btn btn-action btn-stop">STOP</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODE C ATTEINTE -->
+  <div class="screen-wrapper">
+    <div class="screen-label">Mode C — Atteinte</div>
+    <div class="screen">
+      <div class="header">
+        <span class="title">CONSIGNE</span>
+        <div class="indicators"><span class="status-dot ok"></span></div>
+      </div>
+      <div class="content" style="justify-content: flex-start; padding-top: 2px;">
+        <div class="arc-container">
+          <svg class="arc-svg" viewBox="0 0 130 130">
+            <circle class="arc-bg" cx="65" cy="65" r="54" stroke-dasharray="255" stroke-dashoffset="0" transform="rotate(135 65 65)" />
+            <circle class="arc-fg green" cx="65" cy="65" r="54" stroke-dasharray="255" stroke-dashoffset="30" transform="rotate(135 65 65)" />
+          </svg>
+          <div class="arc-labels">
+            <div class="arc-temp">25.2<span class="arc-unit">°</span></div>
+            <div class="arc-target">SET 25.0°</div>
+          </div>
+        </div>
+        <div class="adjust-row">
+          <div class="label-light">Temperature cible</div>
+          <div class="adjust-controls">
+            <button class="btn-adjust">−</button>
+            <span class="adjust-value">25.0°</span>
+            <button class="btn-adjust">+</button>
+          </div>
+        </div>
+        <div style="height: 2px;"></div>
+        <div class="reached">✓ REACHED</div>
+      </div>
+      <div class="action-bar">
+        <button class="btn btn-action">RETOUR</button>
+        <button class="btn btn-action btn-start">START</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="screens-row">
+
+  <!-- ALERTE CONNEXION -->
+  <div class="screen-wrapper">
+    <div class="screen-label">Alerte — Connexion</div>
+    <div class="screen">
+      <div class="header">
+        <span class="title">ALERTE</span>
+        <div class="indicators"><span class="status-dot err"></span></div>
+      </div>
+      <div class="content" style="justify-content: center;">
+        <div class="alert-card">
+          <div class="alert-title">LINK LOST</div>
+          <div class="alert-text">Verifier le module<br>relais et la portee<br>radio.</div>
+        </div>
+      </div>
+      <div class="action-bar" style="justify-content: center;">
+        <button class="btn btn-danger" style="width: 200px;">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ALERTE CAPTEUR -->
+  <div class="screen-wrapper">
+    <div class="screen-label">Alerte — Capteur</div>
+    <div class="screen">
+      <div class="header">
+        <span class="title">ALERTE</span>
+        <div class="indicators"><span class="status-dot err"></span></div>
+      </div>
+      <div class="content" style="justify-content: center;">
+        <div class="alert-card">
+          <div class="alert-title">SENSOR FAIL</div>
+          <div class="alert-text">AHT21 non detecte<br>CN1 SDA:27 SCL:22<br>
+            <span style="color: var(--accent-warm);">TIMEOUT 5MIN</span>
+          </div>
+        </div>
+      </div>
+      <div class="action-bar" style="justify-content: center;">
+        <button class="btn btn-danger" style="width: 200px;">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
