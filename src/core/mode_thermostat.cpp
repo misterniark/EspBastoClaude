@@ -43,8 +43,14 @@ static bool s_first_eval = true;
 
 void thermostat_start(float setpoint, int hysteresis)
 {
-    s_setpoint   = setpoint;
-    s_hysteresis = hysteresis;
+    /* I4 — Le mode A nécessite un capteur fonctionnel */
+    if (!sensor_has_valid_reading() || sensor_is_error()) {
+        Serial.println("[THERMOSTAT] Demarrage refuse : capteur non pret");
+        return;
+    }
+
+    s_setpoint   = constrain(setpoint, SETPOINT_MIN, SETPOINT_MAX);
+    s_hysteresis = constrain(hysteresis, HYSTERESIS_MIN, HYSTERESIS_MAX);
     s_active     = true;
     s_first_eval = true;
     s_last_eval_ms = millis();

@@ -36,7 +36,8 @@ static void disp_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t 
 
     tft.startWrite();
     tft.setAddrWindow(area->x1, area->y1, w, h);
-    tft.pushColors((uint16_t *)color_p, w * h, true);
+    /* false = pas de swap ici, LVGL le fait déjà (LV_COLOR_16_SWAP=1) */
+    tft.pushColors((uint16_t *)color_p, w * h, false);
     tft.endWrite();
 
     /* Signaler à LVGL que le flush est terminé */

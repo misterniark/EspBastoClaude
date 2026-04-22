@@ -160,13 +160,6 @@ void heater_fsm_update()
 
 bool heater_request_on()
 {
-    /* I4 — Interdire le démarrage avant la première lecture capteur
-     * ou si le capteur est en erreur */
-    if (!sensor_has_valid_reading() || sensor_is_error()) {
-        Serial.println("[HEATER] request_on refuse (capteur non pret ou en erreur)");
-        return false;
-    }
-
     if (current_state != HEATER_IDLE) {
         Serial.printf("[HEATER] request_on refuse (etat: %d)\n", current_state);
         return false;

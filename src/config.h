@@ -201,7 +201,7 @@ constexpr unsigned long DISPLAY_WAKE_DELAY_MS  = 120;    /* Délai après SLPOUT
 /* ==========================================
  * Tactile — Anti-rebond
  * ========================================== */
-constexpr unsigned long TOUCH_DEBOUNCE_MS      = 150;    /* Anti-rebond tactile */
+constexpr unsigned long TOUCH_DEBOUNCE_MS      = 50;     /* Anti-rebond tactile (réduit pour réactivité) */
 constexpr unsigned long TOUCH_LONG_PRESS_MS    = 500;    /* Seuil appui long */
 
 /* ==========================================

@@ -41,10 +41,29 @@ static lv_timer_t *update_timer = nullptr;
  * Callbacks de navigation
  * ========================================== */
 
+/**
+ * Nettoie les ressources du menu avant de naviguer.
+ * Supprime le timer de mise à jour pour éviter un crash
+ * sur des objets LVGL détruits par la transition d'écran.
+ */
+static void cleanup_menu()
+{
+    if (update_timer) {
+        lv_timer_del(update_timer);
+        update_timer = nullptr;
+    }
+    /* Invalider les pointeurs (l'écran sera détruit par lv_scr_load_anim) */
+    tile_thermo = nullptr;
+    tile_timer  = nullptr;
+    tile_setpt  = nullptr;
+    btn_stop    = nullptr;
+}
+
 static void on_tile_thermostat(lv_event_t *e)
 {
     (void)e;
     if (heater_get_state() == HEATER_LOCKED) return;
+    cleanup_menu();
     scr_thermostat_create();
 }
 
@@ -52,6 +71,7 @@ static void on_tile_timer(lv_event_t *e)
 {
     (void)e;
     if (heater_get_state() == HEATER_LOCKED) return;
+    cleanup_menu();
     scr_timer_create();
 }
 
@@ -59,6 +79,7 @@ static void on_tile_setpoint(lv_event_t *e)
 {
     (void)e;
     if (heater_get_state() == HEATER_LOCKED) return;
+    cleanup_menu();
     scr_setpoint_create();
 }
 
@@ -156,21 +177,15 @@ static void update_cb(lv_timer_t *timer)
     if (tile_timer)  ui_set_locked(tile_timer, locked);
     if (tile_setpt)  ui_set_locked(tile_setpt, locked);
 
-    /* Alertes prioritaires */
+    /* Alertes prioritaires — nettoyer avant de changer d'écran */
     if (heater_has_connection_alert()) {
-        if (update_timer) {
-            lv_timer_del(update_timer);
-            update_timer = nullptr;
-        }
+        cleanup_menu();
         scr_alert_connection_lost();
         return;
     }
 
     if (sensor_is_critical_error()) {
-        if (update_timer) {
-            lv_timer_del(update_timer);
-            update_timer = nullptr;
-        }
+        cleanup_menu();
         scr_alert_sensor_error();
         return;
     }

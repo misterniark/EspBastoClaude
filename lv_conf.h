@@ -50,8 +50,9 @@
  * Économie CPU significative par rapport à 30 FPS (33ms). */
 #define LV_DISP_DEF_REFR_PERIOD 100
 
-/* Période de lecture du touchpad (en ms) */
-#define LV_INDEV_DEF_READ_PERIOD 50
+/* Période de lecture du touchpad (en ms).
+ * 20ms pour un tactile résistif réactif. */
+#define LV_INDEV_DEF_READ_PERIOD 20
 
 /* ==========================================
  * DESSIN / RENDU

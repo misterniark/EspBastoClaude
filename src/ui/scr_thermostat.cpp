@@ -358,13 +358,13 @@ void scr_thermostat_create()
     lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(content, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_top(content, 8, 0);
-    lv_obj_set_style_pad_row(content, 6, 0);
+    lv_obj_set_style_pad_top(content, 4, 0);
+    lv_obj_set_style_pad_row(content, 2, 0);
 
     /* --- Arc de température (120px, épaisseur 10px) --- */
     /* Conteneur pour positionner l'arc et les labels centraux */
     lv_obj_t *arc_cont = lv_obj_create(content);
-    lv_obj_set_size(arc_cont, ARC_SIZE + 20, ARC_SIZE + 10);
+    lv_obj_set_size(arc_cont, ARC_SIZE, ARC_SIZE - 10);
     lv_obj_set_style_bg_opa(arc_cont, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(arc_cont, 0, 0);
     lv_obj_set_style_pad_all(arc_cont, 0, 0);
@@ -402,7 +402,7 @@ void scr_thermostat_create()
 
     /* --- Rangée CONSIGNE : label + [-] + valeur + [+] --- */
     lv_obj_t *row_sp = lv_obj_create(content);
-    lv_obj_set_size(row_sp, SCREEN_WIDTH - 16, 50);
+    lv_obj_set_size(row_sp, SCREEN_WIDTH - 16, 44);
     lv_obj_set_style_bg_opa(row_sp, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(row_sp, 0, 0);
     lv_obj_set_style_pad_all(row_sp, 0, 0);
@@ -434,7 +434,7 @@ void scr_thermostat_create()
 
     /* --- Rangée HYSTERESIS : label + [-] + valeur + [+] --- */
     lv_obj_t *row_hy = lv_obj_create(content);
-    lv_obj_set_size(row_hy, SCREEN_WIDTH - 16, 50);
+    lv_obj_set_size(row_hy, SCREEN_WIDTH - 16, 44);
     lv_obj_set_style_bg_opa(row_hy, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(row_hy, 0, 0);
     lv_obj_set_style_pad_all(row_hy, 0, 0);

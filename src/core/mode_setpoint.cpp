@@ -45,7 +45,13 @@ static bool s_first_eval = true;
 
 void setpoint_mode_start(float target)
 {
-    s_target   = target;
+    /* I4 — Le mode C nécessite un capteur fonctionnel */
+    if (!sensor_has_valid_reading() || sensor_is_error()) {
+        Serial.println("[SETPOINT] Demarrage refuse : capteur non pret");
+        return;
+    }
+
+    s_target   = constrain(target, SETPOINT_MIN, SETPOINT_MAX);
     s_active   = true;
     s_reached  = false;
     s_first_eval = true;

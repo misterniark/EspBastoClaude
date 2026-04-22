@@ -42,11 +42,35 @@ SI action détectée (écran allumé) :
 
 | Optimisation | Remarque |
 |-------------|----------|
-| CPU à 80 MHz | Suffisant pour l'UI + ESP-NOW, à valider selon la fluidité écran |
-| Backlight OFF | Meilleur levier d'économie sur cette carte |
+| CPU à 80 MHz | Suffisant pour l'UI + ESP-NOW |
+| Backlight OFF | Meilleur levier d'économie (~25-40 mA) |
 | ILI9341 en veille (`SLPIN`) | Réduit la consommation du contrôleur TFT |
-| WiFi modem sleep (`WIFI_PS_MIN_MODEM`) | Recommandé hors trafic intense |
-| Désactivation LED RGB par défaut | LED actives à l'état bas, à garder éteintes hors debug |
+| WiFi modem sleep (`WIFI_PS_MIN_MODEM`) | `MAX_MODEM` cause des pertes de paquets ESP-NOW |
+| LVGL stoppé en veille | `lv_timer_handler()` non appelé quand l'écran dort (économie CPU + SPI) |
+| LVGL à 10 FPS | `LV_DISP_DEF_REFR_PERIOD = 100` (suffisant pour un thermostat) |
+| Capteur adaptatif | 5s écran actif, 10s en veille + mode actif, arrêt complet sinon |
+| Désactivation LED RGB | LED actives à l'état bas, forcées HIGH au démarrage |
+| GPIO speaker en LOW | Pin 26 forcée en sortie basse (évite les oscillations) |
+| Logs conditionnels | Macro `DEBUG_MODE` — Serial désactivable en production (~1 mA) |
+
+**Consommation estimée :**
+
+| État | Consommation |
+|------|-------------|
+| Écran actif | ~65 mA |
+| Écran en veille | ~20 mA |
+
+### Indicateur batterie (MAX17048)
+
+Le MAX17048 est un fuel gauge I2C (même bus que l'AHT21) qui fournit
+le pourcentage de charge et la tension sans calibration.
+
+| Paramètre | Valeur |
+|-----------|--------|
+| Intervalle de lecture | 30 secondes |
+| Affichage | `XX%` dans le header, entre la température et les icônes |
+| Seuil batterie basse | 10% |
+| Couleur indicateur | Gris > 20%, or brun > 10%, rouge < 10% |
 
 ---
 
@@ -1192,9 +1216,33 @@ build_flags =
 
 ---
 
-## 11. Historique des versions
+## 11. Sécurité
+
+### Protections implémentées
+
+| Protection | Mécanisme | Fichier |
+|-----------|-----------|---------|
+| **Température max absolue** | Arrêt forcé du chauffage si T >= 40°C | `heater_fsm.cpp` |
+| **Erreur capteur critique** | Arrêt forcé après 5 min sans lecture valide | `heater_fsm.cpp` |
+| **Verrou anti-redémarrage** | 3 min d'attente après chaque arrêt (côté relay) | `specs_relay.md` |
+| **Race conditions** | Queue FreeRTOS entre callback WiFi et loop() | `heater_fsm.cpp`, `relay_link.cpp` |
+| **Modes mutuellement exclusifs** | Garde dans loop() : si >1 mode actif → arrêt de tous | `main.cpp` |
+| **Validation NVS** | `constrain()` dans tous les setters (valeurs corrompues) | `mode_*.cpp` |
+| **Capteur non prêt** | Démarrage chauffage interdit avant 1ère lecture valide | `heater_fsm.cpp` |
+| **Perte connexion** | Détection après 2 pings (2 min), relay watchdog à 3 min | `relay_link.cpp` |
+| **Perte connexion pendant HEATING** | Transition vers LOCKED (pas IDLE) | `heater_fsm.cpp` |
+| **Stop = arrêt chauffage** | `thermostat_stop()` et `setpoint_stop()` envoient HEAT_OFF | `mode_*.cpp` |
+
+### Watchdog relay (côté relais)
+
+Si le relais ne reçoit aucun ping pendant 3 minutes, il coupe le chauffage automatiquement. Le contrôleur détecte la perte après 2 minutes (2 pings échoués) et passe en état LOCKED.
+
+---
+
+## 12. Historique des versions
 
 | Version | Date | Modifications |
 |---------|------|---------------|
 | 0.1.0 | Avril 2026 | Spécifications initiales : architecture, 3 modes, GPIO, UI rétro-futuriste |
 | 0.2.0 | Avril 2026 | Ajout machine d'état chauffage, navigation sans arrêt, verrouillage ACK_LOCKED, lissage EMA α=0.1, découverte automatique du relais |
+| 0.3.0 | Avril 2026 | Thème "Muted Industrial", audit sécurité (10 corrections), optimisations batterie, indicateur batterie MAX17048 |
