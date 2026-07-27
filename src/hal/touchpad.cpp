@@ -161,6 +161,19 @@ bool hal_touchpad_is_touched()
 #else
 /* ================================================================
  * Backend XPT2046 (résistif SPI) — CYD ESP32-2432S028R
+ *
+ * ⚠️ CIBLE NON MAINTENUE depuis le 27/07/2026 (voir platformio.ini).
+ *
+ * DÉFAUT CONNU NON CORRIGÉ — anti-rebond défectueux (plus bas dans
+ * ce fichier) : pendant la fenêtre de TOUCH_DEBOUNCE_MS, la lecture
+ * rapporte RELEASED au lieu de répéter l'état courant. LVGL lisant
+ * toutes les 20 ms, un appui MAINTENU produit une alternance
+ * PRESSED/RELEASED — donc une rafale de LV_EVENT_CLICKED : un seul
+ * tap peut démarrer PUIS arrêter le chauffage, ou faire sauter
+ * plusieurs pas à un bouton +/-. Rédhibitoire pour un appareil à
+ * combustion. Correctif à écrire avant toute réanimation de la
+ * cible : ne débouncer que les TRANSITIONS d'état (mémoriser le
+ * dernier état rapporté), ou supprimer ce filtre (LVGL gère déjà).
  * ================================================================ */
 
 #include <XPT2046_Touchscreen.h>

@@ -356,6 +356,11 @@ void sensor_update(unsigned long interval_ms)
 #else
 /* ================================================================
  * Backend AHT21 (I2C) — CYD ESP32-2432S028R
+ *
+ * ⚠️ CIBLE NON MAINTENUE depuis le 27/07/2026 (voir platformio.ini).
+ * Limite connue : aht.getEvent() est SYNCHRONE (~80 ms de blocage
+ * toutes les 5 s), là où le backend DS18B20 du CrowPanel est
+ * asynchrone. À reprendre si la cible est un jour réanimée.
  * ================================================================ */
 
 #include <Adafruit_AHTX0.h>

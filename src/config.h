@@ -113,7 +113,13 @@ constexpr int PIN_ONEWIRE = 18;
  * ========================================== */
 constexpr int PIN_BUZZER = 8;    /* Buzzer passif — forcé LOW au boot */
 
-#else /* ================== CYD (ESP32-2432S028R) ================== */
+#else /* ================== CYD (ESP32-2432S028R) ==================
+       *
+       * ⚠️ CIBLE NON MAINTENUE depuis le 27/07/2026 — conservée pour
+       * référence, plus testée sur matériel, ne pas mettre en service.
+       * Défaut connu non corrigé : anti-rebond tactile XPT2046 (voir
+       * hal/touchpad.cpp et le bandeau de platformio.ini).
+       * ============================================================ */
 
 /* Nom du capteur de température (pour les logs) */
 #define SENSOR_NAME "AHT21"

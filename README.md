@@ -4,18 +4,7 @@ Controleur de chauffage Webasto pour van amenage, avec ecran tactile et communic
 
 ## Materiel
 
-Deux variantes de controleur sont supportees (selection a la compilation
-via l'environnement PlatformIO) :
-
-### Variante CYD (`pio run -e cyd`)
-
-| Composant | Reference |
-|-----------|-----------|
-| Controleur | ESP32-2432S028R (ESP32 + ecran 2.8" ILI9341 + tactile resistif XPT2046) |
-| Capteur | AHT21 (temperature + humidite, I2C sur CN1 : SDA=27, SCL=22) |
-| Batterie | MAX17048 (jauge I2C, optionnelle) |
-
-### Variante CrowPanel (`pio run -e crowpanel`)
+### Variante CrowPanel — **cible de production** (`pio run`)
 
 | Composant | Reference |
 |-----------|-----------|
@@ -31,12 +20,26 @@ Notes CrowPanel :
   `TOUCH_MIRROR_X`, `TOUCH_MIRROR_Y`), et ordre des couleurs
   (`TFT_RGB_ORDER` dans `platformio.ini` si rouge et bleu sont inverses).
 
-### Commun aux deux variantes
+### Relais (commun)
 
 | Composant | Reference |
 |-----------|-----------|
 | Relais | Seeed XIAO ESP32-C3 (projet separe : [ESPBastoRelay](../ESPBastoRelay)) |
 | Communication | ESP-NOW (~200m, decouverte automatique) |
+
+### Variante CYD (`pio run -e cyd`) — NON MAINTENUE
+
+Le portage ESP32-2432S028R (ESP32 + ecran ILI9341 + tactile resistif
+XPT2046 + capteur AHT21) est **abandonne depuis le 27/07/2026**. Le code
+est conserve dans les branches `#else` du projet mais n'est plus teste
+sur materiel, plus construit par defaut, et ne suit plus les evolutions.
+
+**Ne pas mettre en service** : l'audit du 27/07/2026 a releve un defaut
+non corrige de l'anti-rebond tactile (`src/hal/touchpad.cpp`) qui
+transforme un appui maintenu en rafale de clics — un seul tap peut
+demarrer puis arreter le chauffage. Pour reanimer la cible : corriger
+l'anti-rebond, epingler la dependance Git `XPT2046_Touchscreen`, puis
+revalider integralement au banc.
 
 ## Fonctionnalites
 
@@ -50,11 +53,11 @@ Notes CrowPanel :
 
 ```
 src/
-  hal/         Display, tactile, backlight, capteur AHT21, batterie MAX17048
+  hal/         Display, tactile FT6236, backlight, sonde DS18B20, batterie MAX17048
   comm/        Protocole ESP-NOW, decouverte relais, ping/retry
   core/        Machine d'etat chauffage, 3 modes, stockage NVS
   ui/          Theme LVGL, header, 6 ecrans (menu, modes, alertes, recherche)
-  power/       Veille ecran, CPU 80MHz, LEDs off
+  power/       Veille ecran, CPU 80MHz, buzzer off
 ```
 
 ## Build

@@ -43,7 +43,8 @@ void power_init()
     pinMode(PIN_BUZZER, OUTPUT);
     digitalWrite(PIN_BUZZER, LOW);
 #else
-    /* Éteindre les LEDs RGB (actives à l'état bas → HIGH = éteint) */
+    /* CYD — cible non maintenue (voir platformio.ini).
+     * Éteindre les LEDs RGB (actives à l'état bas → HIGH = éteint) */
     pinMode(PIN_LED_RED, OUTPUT);
     pinMode(PIN_LED_GREEN, OUTPUT);
     pinMode(PIN_LED_BLUE, OUTPUT);
