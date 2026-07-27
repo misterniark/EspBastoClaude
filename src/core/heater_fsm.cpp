@@ -25,7 +25,11 @@
 /* État courant — modifié UNIQUEMENT depuis heater_fsm_update() (contexte loop) */
 static HeaterState current_state = HEATER_IDLE;
 static bool connection_alert = false;
-static bool sensor_safety_alert = false;
+
+/* Cause de l'arrêt de sécurité en attente d'acquittement par l'UI.
+ * Typée (et non booléenne) pour que l'écran d'alerte puisse afficher
+ * un message explicite : capteur HS (C1) ou température max (C4). */
+static HeaterSafetyReason safety_reason = HEATER_SAFETY_NONE;
 
 /*
  * Queue FreeRTOS pour recevoir les événements du callback WiFi
@@ -93,7 +97,7 @@ void heater_fsm_init()
 {
     current_state = HEATER_IDLE;
     connection_alert = false;
-    sensor_safety_alert = false;
+    safety_reason = HEATER_SAFETY_NONE;
 
     /* Créer la queue FreeRTOS pour les événements */
     event_queue = xQueueCreate(EVENT_QUEUE_SIZE, sizeof(uint8_t));
@@ -131,7 +135,7 @@ void heater_fsm_update()
         Serial.println("[HEATER] SECURITE : erreur capteur critique -> arret force");
         relay_send_heat_off();
         current_state = HEATER_IDLE;
-        sensor_safety_alert = true;
+        safety_reason = HEATER_SAFETY_SENSOR;
         return;
     }
 
@@ -143,7 +147,7 @@ void heater_fsm_update()
                       sensor_get_temperature(), TEMP_SAFETY_MAX);
         relay_send_heat_off();
         current_state = HEATER_IDLE;
-        sensor_safety_alert = true;
+        safety_reason = HEATER_SAFETY_OVERTEMP;
         return;
     }
 
@@ -202,10 +206,15 @@ void heater_clear_connection_alert()
 
 bool heater_has_sensor_safety_alert()
 {
-    return sensor_safety_alert;
+    return safety_reason != HEATER_SAFETY_NONE;
+}
+
+HeaterSafetyReason heater_get_safety_alert_reason()
+{
+    return safety_reason;
 }
 
 void heater_clear_sensor_safety_alert()
 {
-    sensor_safety_alert = false;
+    safety_reason = HEATER_SAFETY_NONE;
 }

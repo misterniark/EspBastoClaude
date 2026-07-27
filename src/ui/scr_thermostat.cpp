@@ -83,25 +83,59 @@ static void refresh_hysteresis_label();
 static void schedule_deferred_save();
 
 /* ==========================================
- * Callbacks des événements boutons
+ * Nettoyage de l'écran
  * ========================================== */
 
 /**
- * Callback bouton RETOUR : retour au menu principal.
- * Supprime le timer de mise à jour avant de quitter l'écran.
+ * Supprime les timers de l'écran. Si une sauvegarde différée est en
+ * attente, elle est exécutée immédiatement (et non abandonnée) pour
+ * ne pas perdre un réglage fait moins de 5 s avant de quitter l'écran.
  */
-static void cb_back(lv_event_t *e)
+static void cleanup_thermostat()
 {
-    (void)e;
-    /* Supprimer les timers avant la transition */
     if (update_timer) {
         lv_timer_del(update_timer);
         update_timer = NULL;
     }
     if (save_timer) {
+        /* Flush : écrire en NVS maintenant plutôt que de perdre le réglage */
         lv_timer_del(save_timer);
         save_timer = NULL;
+        storage_save_setpoint(local_setpoint);
+        storage_save_hysteresis(local_hysteresis);
     }
+}
+
+/**
+ * Callback LV_EVENT_DELETE de l'écran : filet de sécurité quand
+ * l'écran est remplacé sans passer par le bouton RETOUR — cas du
+ * dispatcher d'alertes (ui_alerts) qui charge un écran d'alerte
+ * par-dessus. Sans ce nettoyage, update_timer_cb continuerait de
+ * tourner sur des widgets détruits (crash).
+ * Le test sur `scr` évite de supprimer les timers d'une NOUVELLE
+ * instance de l'écran créée avant la destruction effective de
+ * l'ancienne (l'auto-delete arrive en fin d'animation de fondu).
+ */
+static void on_screen_delete(lv_event_t *e)
+{
+    if (lv_event_get_target(e) != scr) return;
+    scr = NULL;
+    cleanup_thermostat();
+}
+
+/* ==========================================
+ * Callbacks des événements boutons
+ * ========================================== */
+
+/**
+ * Callback bouton RETOUR : retour au menu principal.
+ * Supprime les timers (avec flush de la sauvegarde différée)
+ * avant de quitter l'écran.
+ */
+static void cb_back(lv_event_t *e)
+{
+    (void)e;
+    cleanup_thermostat();
     scr_menu_create();
 }
 
@@ -350,6 +384,10 @@ void scr_thermostat_create()
     scr = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(scr, cl_bg, 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+
+    /* Nettoyage des timers si l'écran est détruit par un tiers
+     * (dispatcher d'alertes) — voir on_screen_delete */
+    lv_obj_add_event_cb(scr, on_screen_delete, LV_EVENT_DELETE, NULL);
 
     /* --- Header (bandeau haut 30px) --- */
     header_create(scr);

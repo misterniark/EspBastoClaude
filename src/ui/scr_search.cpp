@@ -21,6 +21,9 @@
 /* Référence vers le menu pour la transition */
 extern void scr_menu_create();
 
+/* Écran courant (pour le filet de sécurité LV_EVENT_DELETE) */
+static lv_obj_t *scr = nullptr;
+
 /* Timer de vérification de connexion */
 static lv_timer_t *check_timer = nullptr;
 
@@ -40,12 +43,36 @@ static void check_connection_cb(lv_timer_t *timer)
     }
 }
 
+/**
+ * Callback LV_EVENT_DELETE de l'écran : filet de sécurité quand
+ * l'écran est remplacé sans transition locale — cas du dispatcher
+ * d'alertes (ui_alerts), par exemple une erreur capteur critique
+ * pendant la recherche du relais. Sans ce nettoyage, une reconnexion
+ * ultérieure ferait surgir le menu par-dessus l'écran d'alerte.
+ * Le test sur `scr` évite de supprimer le timer d'une NOUVELLE
+ * instance de l'écran créée avant la destruction effective de
+ * l'ancienne (l'auto-delete arrive en fin d'animation de fondu).
+ */
+static void on_screen_delete(lv_event_t *e)
+{
+    if (lv_event_get_target(e) != scr) return;
+    scr = nullptr;
+    if (check_timer) {
+        lv_timer_del(check_timer);
+        check_timer = nullptr;
+    }
+}
+
 void scr_search_create()
 {
     /* Créer l'écran */
-    lv_obj_t *scr = lv_obj_create(NULL);
+    scr = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(scr, cl_bg, 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+
+    /* Nettoyage du timer si l'écran est détruit par un tiers
+     * (dispatcher d'alertes) — voir on_screen_delete */
+    lv_obj_add_event_cb(scr, on_screen_delete, LV_EVENT_DELETE, NULL);
 
     /* Header */
     header_create(scr);

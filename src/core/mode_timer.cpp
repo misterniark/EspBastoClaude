@@ -7,7 +7,8 @@
  *
  * Corrections de sécurité :
  *   C3 — Vérifier le retour de heater_request_on() avant de lancer le timer.
- *         Surveiller la température max de sécurité pendant le décompte.
+ *   C4bis — Arrêter le décompte si un arrêt de sécurité (C1/C4 dans
+ *           heater_fsm) a coupé le chauffage pendant le décompte.
  *   I2 — Clamp de la durée dans le setter.
  *   I6 — timer_mode_stop() appelle heater_request_off() directement.
  */
@@ -59,6 +60,21 @@ void timer_mode_stop()
 void timer_mode_update()
 {
     if (!s_running) return;
+
+    /*
+     * Garde de securite C4bis (pendant du C1bis des modes A/C) : si un
+     * arret de securite (C1 capteur mort ou C4 temperature max) a coupe
+     * le chauffage pendant le decompte, arreter aussi le minuteur.
+     * Sans cette garde, le decompte continuerait de s'afficher alors
+     * que le chauffage est coupe et ne redemarrera jamais (le minuteur
+     * ne rallume jamais en cours de route). Pas de heater_request_off()
+     * ici : heater_fsm a deja coupe (etat IDLE).
+     */
+    if (heater_has_sensor_safety_alert()) {
+        s_running = false;
+        Serial.println("[TIMER] Arret de securite du chauffage -> arret du minuteur");
+        return;
+    }
 
     unsigned long now     = millis();
     unsigned long elapsed = now - s_start_ms;

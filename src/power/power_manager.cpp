@@ -122,6 +122,35 @@ void power_reset_inactivity()
     last_activity_ms = millis();
 }
 
+void power_force_wake()
+{
+    /* Dans tous les cas, repartir pour un délai d'inactivité complet :
+     * l'appelant affiche une alerte que l'utilisateur doit avoir le
+     * temps de lire avant la prochaine mise en veille. */
+    last_activity_ms = millis();
+
+    if (!screen_off) {
+        return; /* Écran déjà allumé : rien d'autre à faire */
+    }
+
+    /* Même séquence de réveil que pour un toucher, SANS consommation
+     * de toucher (le réveil vient du code, pas du doigt) : rallumer
+     * la dalle puis forcer un redessin complet, le rendu LVGL ayant
+     * été stoppé pendant la veille. */
+    display_wake();
+    screen_off = false;
+    lv_obj_invalidate(lv_scr_act());
+
+    /* Comme pour le réveil tactile (garde I4) : forcer une lecture
+     * capteur immédiate pour que la température affichée après
+     * l'acquittement de l'alerte ne soit pas gelée depuis la mise en
+     * veille. Sans effet utile si le capteur est mort (cas C1), mais
+     * inoffensif. */
+    sensor_force_read();
+
+    Serial.println("[POWER] Réveil forcé de l'écran (alerte)");
+}
+
 bool power_is_screen_off()
 {
     return screen_off;

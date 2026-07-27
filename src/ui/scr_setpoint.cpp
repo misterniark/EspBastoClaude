@@ -25,6 +25,7 @@
 
 extern void scr_menu_create();
 
+static lv_obj_t *scr           = nullptr;
 static lv_obj_t *arc           = nullptr;
 static lv_obj_t *lbl_temp      = nullptr;
 static lv_obj_t *lbl_target    = nullptr;
@@ -122,6 +123,24 @@ static void on_back(lv_event_t *e)
     scr_menu_create();
 }
 
+/**
+ * Callback LV_EVENT_DELETE de l'écran : filet de sécurité quand
+ * l'écran est remplacé sans passer par le bouton RETOUR — cas du
+ * dispatcher d'alertes (ui_alerts) qui charge un écran d'alerte
+ * par-dessus. Supprime le timer de mise à jour et flush la
+ * sauvegarde différée (comme on_back) pour ne pas perdre un réglage.
+ * Le test sur `scr` évite de supprimer les timers d'une NOUVELLE
+ * instance de l'écran créée avant la destruction effective de
+ * l'ancienne (l'auto-delete arrive en fin d'animation de fondu).
+ */
+static void on_screen_delete(lv_event_t *e)
+{
+    if (lv_event_get_target(e) != scr) return;
+    scr = nullptr;
+    if (update_timer) { lv_timer_del(update_timer); update_timer = nullptr; }
+    if (save_timer) { save_cb(nullptr); }
+}
+
 static void on_action(lv_event_t *e)
 {
     (void)e;
@@ -161,9 +180,13 @@ static void on_plus(lv_event_t *e)
 
 void scr_setpoint_create()
 {
-    lv_obj_t *scr = lv_obj_create(NULL);
+    scr = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(scr, cl_bg, 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+
+    /* Nettoyage des timers si l'écran est détruit par un tiers
+     * (dispatcher d'alertes) — voir on_screen_delete */
+    lv_obj_add_event_cb(scr, on_screen_delete, LV_EVENT_DELETE, NULL);
 
     /* Header */
     header_create(scr);

@@ -11,13 +11,15 @@
  *   - Les indicateurs du header
  *   - La visibilité du bouton ARRÊTER
  *   - L'état de verrouillage (grisage des tuiles)
- *   - Les alertes (connexion perdue, erreur capteur)
+ *
+ * Les alertes (sécurité, connexion, capteur) ne sont PAS gérées ici :
+ * elles sont dispatchées par ui_alerts_update() depuis loop(), qui
+ * fonctionne aussi pendant la veille écran et sur tous les écrans.
  */
 
 #include "scr_menu.h"
 #include "ui_common.h"
 #include "ui_header.h"
-#include "scr_alert.h"
 #include "../hal/battery.h"
 #include "../config.h"
 #include "../core/heater_fsm.h"
@@ -31,6 +33,7 @@ extern void scr_timer_create();
 extern void scr_setpoint_create();
 
 /* Widgets du menu (références pour mise à jour dynamique) */
+static lv_obj_t *scr          = nullptr;
 static lv_obj_t *tile_thermo  = nullptr;
 static lv_obj_t *tile_timer   = nullptr;
 static lv_obj_t *tile_setpt   = nullptr;
@@ -57,6 +60,23 @@ static void cleanup_menu()
     tile_timer  = nullptr;
     tile_setpt  = nullptr;
     btn_stop    = nullptr;
+}
+
+/**
+ * Callback LV_EVENT_DELETE de l'écran : filet de sécurité quand le
+ * menu est remplacé sans passer par une navigation locale — cas du
+ * dispatcher d'alertes (ui_alerts) qui charge un écran d'alerte
+ * par-dessus le menu. Sans ce nettoyage, update_cb continuerait de
+ * tourner sur des widgets détruits (crash).
+ * Le test sur `scr` évite de supprimer les timers d'une NOUVELLE
+ * instance du menu si elle a été créée avant la destruction effective
+ * de l'ancienne (l'auto-delete arrive en fin d'animation de fondu).
+ */
+static void on_screen_delete(lv_event_t *e)
+{
+    if (lv_event_get_target(e) != scr) return;
+    scr = nullptr;
+    cleanup_menu();
 }
 
 static void on_tile_thermostat(lv_event_t *e)
@@ -176,19 +196,6 @@ static void update_cb(lv_timer_t *timer)
     if (tile_thermo) ui_set_locked(tile_thermo, locked);
     if (tile_timer)  ui_set_locked(tile_timer, locked);
     if (tile_setpt)  ui_set_locked(tile_setpt, locked);
-
-    /* Alertes prioritaires — nettoyer avant de changer d'écran */
-    if (heater_has_connection_alert()) {
-        cleanup_menu();
-        scr_alert_connection_lost();
-        return;
-    }
-
-    if (sensor_is_critical_error()) {
-        cleanup_menu();
-        scr_alert_sensor_error();
-        return;
-    }
 }
 
 /* ==========================================
@@ -198,9 +205,13 @@ static void update_cb(lv_timer_t *timer)
 void scr_menu_create()
 {
     /* Créer l'écran */
-    lv_obj_t *scr = lv_obj_create(NULL);
+    scr = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(scr, cl_bg, 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+
+    /* Nettoyage des timers si l'écran est détruit par un tiers
+     * (dispatcher d'alertes) — voir on_screen_delete */
+    lv_obj_add_event_cb(scr, on_screen_delete, LV_EVENT_DELETE, NULL);
 
     /* Header */
     header_create(scr);

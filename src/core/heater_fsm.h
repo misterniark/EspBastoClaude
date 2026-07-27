@@ -27,6 +27,17 @@ enum HeaterState {
 };
 
 /**
+ * Cause d'un arrêt de sécurité du chauffage.
+ * Permet à l'UI d'afficher un message explicite selon la coupure
+ * (C1 : capteur mort, C4 : surchauffe) au lieu d'un simple booléen.
+ */
+enum HeaterSafetyReason {
+    HEATER_SAFETY_NONE,     /* Aucun arrêt de sécurité en attente d'acquittement */
+    HEATER_SAFETY_SENSOR,   /* C1 — capteur en erreur critique (> 5 min) */
+    HEATER_SAFETY_OVERTEMP  /* C4 — température >= TEMP_SAFETY_MAX */
+};
+
+/**
  * Initialise la machine d'état.
  * Enregistre le callback de réception des ACK depuis relay_link.
  */
@@ -71,8 +82,16 @@ void heater_clear_connection_alert();
 /**
  * Retourne true si un arrêt de sécurité a été déclenché
  * (erreur capteur critique ou température max dépassée).
+ * Équivaut à heater_get_safety_alert_reason() != HEATER_SAFETY_NONE.
  */
 bool heater_has_sensor_safety_alert();
+
+/**
+ * Retourne la cause de l'arrêt de sécurité en attente d'acquittement,
+ * ou HEATER_SAFETY_NONE si aucun. L'UI s'en sert pour choisir le
+ * message affiché (capteur HS vs température max).
+ */
+HeaterSafetyReason heater_get_safety_alert_reason();
 
 /** Acquitte l'alerte de sécurité capteur/température. */
 void heater_clear_sensor_safety_alert();

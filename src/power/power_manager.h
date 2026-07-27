@@ -35,6 +35,21 @@ bool power_update();
  */
 void power_reset_inactivity();
 
+/**
+ * Réveil forcé de l'écran depuis le code (pas par un toucher) :
+ * utilisé par les alertes qui peuvent survenir pendant la veille
+ * (arrêt de sécurité C1/C4, perte de connexion).
+ *
+ * Contrairement à un appel direct à display_wake(), cette fonction
+ * resynchronise l'état interne du gestionnaire d'énergie : sans cela,
+ * le rétroéclairage se rallumerait mais loop() continuerait de sauter
+ * lv_timer_handler() (écran considéré en veille) et l'alerte ne serait
+ * jamais dessinée. Réinitialise aussi le timer d'inactivité pour
+ * laisser à l'utilisateur le délai complet avant remise en veille.
+ * Sans effet notable si l'écran est déjà allumé.
+ */
+void power_force_wake();
+
 /** Retourne true si l'écran est actuellement en veille. */
 bool power_is_screen_off();
 

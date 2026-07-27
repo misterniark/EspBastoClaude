@@ -2,56 +2,91 @@
  * @file scr_alert.cpp
  * @brief Implémentation des écrans d'alerte
  *
- * Design commun : fond noir, carte centrale avec bordure rouge 2px,
- * ombre rouge diffuse, titre rouge 16px, texte explicatif gris,
- * bouton OK pleine largeur en bas avec bordure rouge.
+ * Design commun (Muted Industrial) : fond charbon, carte centrale avec
+ * bordure gauche rouge 3px, titre rouge 16px, texte explicatif gris
+ * atténué, bouton OK pleine largeur en bas avec bordure rouge.
  *
- * Les deux alertes (connexion et capteur) utilisent la même structure,
- * seuls les textes changent.
+ * Les quatre alertes (connexion, capteur, sécurité capteur, sécurité
+ * température) utilisent la même structure, seuls les textes et
+ * l'action d'acquittement changent.
  */
 
 #include "scr_alert.h"
 #include "ui_common.h"
 #include "../config.h"
 #include "../core/heater_fsm.h"
-#include "../hal/backlight.h"
+#include "../comm/relay_link.h"
+#include "../power/power_manager.h"
 #include <lvgl.h>
+#include <cstdio>
 
-/* Référence vers le menu pour le retour après acquittement */
+/* Références vers les écrans de retour après acquittement */
 extern void scr_menu_create();
+extern void scr_search_create();
+
+/*
+ * Action d'acquittement de l'alerte actuellement affichée.
+ * Chaque écran d'alerte enregistre ici la fonction qui lève SON
+ * drapeau (et uniquement le sien) : acquitter l'alerte visible ne
+ * doit pas lever silencieusement les drapeaux d'alertes non vues,
+ * qui doivent pouvoir s'afficher à leur tour.
+ */
+static void (*ack_cb)(void) = nullptr;
 
 /**
- * Callback du bouton OK : acquitte l'alerte et retourne au menu.
+ * Callback du bouton OK : acquitte l'alerte affichée puis quitte
+ * l'écran d'alerte.
+ *
+ * Retour vers le menu si le relais est connecté, sinon vers l'écran
+ * de recherche : depuis que les alertes peuvent s'afficher partout
+ * (dispatcher central), l'acquittement d'une alerte de connexion
+ * perdue doit ramener à la recherche du relais, pas à un menu
+ * inutilisable sans liaison.
  */
 static void ok_cb(lv_event_t *e)
 {
     (void)e;
 
-    /* Acquitter l'alerte de connexion si active */
-    heater_clear_connection_alert();
+    /* Acquitter l'alerte affichée (lève son drapeau côté core) */
+    if (ack_cb) {
+        ack_cb();
+        ack_cb = nullptr;
+    }
 
-    /* Retourner au menu principal */
-    scr_menu_create();
+    /* Quitter l'écran d'alerte */
+    if (relay_is_connected()) {
+        scr_menu_create();
+    } else {
+        scr_search_create();
+    }
 }
 
 /**
  * Crée un écran d'alerte générique avec titre, message et bouton OK.
- * Réveille l'écran si en veille.
+ * Réveille l'écran si en veille (via power_force_wake, qui resynchronise
+ * le gestionnaire d'énergie — sans quoi LVGL ne rendrait pas l'alerte).
  *
  * @param title   Titre de l'alerte (ex: "CONNEXION PERDUE")
  * @param line1   Première ligne de texte explicatif
  * @param line2   Deuxième ligne de texte explicatif (ou NULL)
  * @param line3   Troisième ligne (ou NULL)
+ * @param on_ack  Action d'acquittement appelée par le bouton OK
+ *                (ou NULL pour une alerte d'état sans drapeau à lever)
  */
 static void create_alert_screen(const char *title,
                                 const char *line1,
                                 const char *line2,
-                                const char *line3)
+                                const char *line3,
+                                void (*on_ack)(void))
 {
-    /* Réveiller l'écran si endormi */
-    if (is_display_sleeping()) {
-        display_wake();
-    }
+    /* Réveiller l'écran si endormi : l'événement peut survenir pendant
+     * la veille (chauffe en tâche de fond). power_force_wake() rallume
+     * la dalle ET resynchronise power_manager pour que loop() reprenne
+     * le rendu LVGL. */
+    power_force_wake();
+
+    /* Mémoriser l'action d'acquittement pour le bouton OK */
+    ack_cb = on_ack;
 
     /* Créer l'écran */
     lv_obj_t *scr = lv_obj_create(NULL);
@@ -127,16 +162,58 @@ void scr_alert_connection_lost()
         "CONNEXION PERDUE",
         "Verifier le module",
         "relais et la portee",
-        "radio."
+        "radio.",
+        heater_clear_connection_alert
     );
 }
 
 void scr_alert_sensor_error()
 {
+    /* Détail du câblage selon la cible matérielle :
+     * CYD = AHT21 en I2C sur CN1, CrowPanel = DS18B20 en OneWire. */
+#ifdef HW_CROWPANEL
+    create_alert_screen(
+        "ERREUR CAPTEUR",
+        "Verifier le cablage",
+        "DS18B20 sur le port",
+        "UART1-OUT.",
+        nullptr /* Alerte d'état : rien à acquitter côté core */
+    );
+#else
     create_alert_screen(
         "ERREUR CAPTEUR",
         "Verifier le cablage",
         "AHT21 sur CN1",
-        "SDA=GPIO27  SCL=GPIO22"
+        "SDA=GPIO27  SCL=GPIO22",
+        nullptr /* Alerte d'état : rien à acquitter côté core */
+    );
+#endif
+}
+
+void scr_alert_safety_sensor()
+{
+    create_alert_screen(
+        "SECURITE CAPTEUR",
+        "Capteur HS : chauffage",
+        "coupe par securite.",
+        "Verifier le capteur.",
+        heater_clear_sensor_safety_alert
+    );
+}
+
+void scr_alert_safety_overtemp()
+{
+    /* Inclure le seuil configuré (TEMP_SAFETY_MAX) dans le message.
+     * Buffer statique : lv_label_set_text() copie le texte, mais le
+     * formatage a lieu avant la création du label. */
+    static char line1[32];
+    snprintf(line1, sizeof(line1), "Limite %.1f\xC2\xB0""C atteinte :", TEMP_SAFETY_MAX);
+
+    create_alert_screen(
+        "TEMP MAX ATTEINTE",
+        line1,
+        "chauffage coupe",
+        "par securite.",
+        heater_clear_sensor_safety_alert
     );
 }

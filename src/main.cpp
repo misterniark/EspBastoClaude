@@ -46,6 +46,7 @@
 #include "ui/ui_common.h"
 #include "ui/scr_search.h"
 #include "ui/scr_menu.h"
+#include "ui/ui_alerts.h"
 
 /* Module économie d'énergie */
 #include "power/power_manager.h"
@@ -184,6 +185,17 @@ void loop()
     thermostat_update();
     timer_mode_update();
     setpoint_mode_update();
+
+    /*
+     * 5bis. Dispatcher des alertes plein écran : consomme les drapeaux
+     * levés par heater_fsm (arrêts de sécurité C1/C4, perte de
+     * connexion I5) et l'état capteur. Appelé ici — et non depuis un
+     * timer LVGL — pour fonctionner aussi pendant la veille écran :
+     * il réveille l'écran si une alerte survient (l'utilisateur doit
+     * savoir POURQUOI le chauffage s'est coupé). Placé avant le rendu
+     * pour que l'alerte soit dessinée dès ce cycle.
+     */
+    ui_alerts_update();
 
     /*
      * 6. Rendu LVGL : traiter les timers, les animations et le redessin.

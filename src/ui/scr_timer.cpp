@@ -75,6 +75,30 @@ static void update_duration_controls();
 static void refresh_duration_label();
 
 /* ==========================================
+ * Nettoyage de l'écran
+ * ========================================== */
+
+/**
+ * Callback LV_EVENT_DELETE de l'écran : filet de sécurité quand
+ * l'écran est remplacé sans passer par le bouton RETOUR — cas du
+ * dispatcher d'alertes (ui_alerts), notamment lors d'un arrêt de
+ * sécurité pendant le décompte. Sans ce nettoyage, update_timer_cb
+ * continuerait de tourner sur des widgets détruits (crash).
+ * Le test sur `scr` évite de supprimer le timer d'une NOUVELLE
+ * instance de l'écran créée avant la destruction effective de
+ * l'ancienne (l'auto-delete arrive en fin d'animation de fondu).
+ */
+static void on_screen_delete(lv_event_t *e)
+{
+    if (lv_event_get_target(e) != scr) return;
+    scr = NULL;
+    if (update_timer) {
+        lv_timer_del(update_timer);
+        update_timer = NULL;
+    }
+}
+
+/* ==========================================
  * Callbacks des événements boutons
  * ========================================== */
 
@@ -268,6 +292,10 @@ void scr_timer_create()
     scr = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(scr, cl_bg, 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+
+    /* Nettoyage du timer si l'écran est détruit par un tiers
+     * (dispatcher d'alertes) — voir on_screen_delete */
+    lv_obj_add_event_cb(scr, on_screen_delete, LV_EVENT_DELETE, NULL);
 
     /* --- Header (bandeau haut 30px) --- */
     header_create(scr);
