@@ -254,6 +254,20 @@ constexpr float SENSOR_EMA_ALPHA      = 0.1f;     /* Coefficient lissage EMA */
 constexpr unsigned long SENSOR_READ_INTERVAL_MS = 2000;
 constexpr unsigned long SENSOR_ERROR_TIMEOUT_MS = 300000; /* 5 min avant arrêt sécurité */
 
+/* Seuil RACCOURCI appliqué pendant une chauffe : au-delà, le chauffage
+ * est coupé et le mode arrêté. Tolérer 5 minutes sans mesure est
+ * acceptable à l'arrêt (on ne fait que geler l'affichage), pas avec un
+ * appareil à combustion allumé et plus aucune protection thermique —
+ * or la panne de sonde la plus probable (parasites du Webasto sur le
+ * câble OneWire) survient justement pendant la chauffe. */
+constexpr unsigned long SENSOR_ERROR_TIMEOUT_HEATING_MS = 90000; /* 1 min 30 */
+
+/* Au-delà de cette interruption des lectures, le lissage EMA est
+ * ré-amorcé sur la première mesure fraîche au lieu d'être mélangé à une
+ * valeur périmée (cas du réveil après une veille sans mode actif, où le
+ * capteur n'est plus lu du tout). */
+constexpr unsigned long SENSOR_EMA_RESET_AGE_MS = 120000; /* 2 min */
+
 /* Âge maximal de la dernière lecture VALIDE pour autoriser le démarrage
  * d'un mode de chauffage piloté par la température (thermostat, consigne).
  * En veille sans mode actif, le capteur n'est plus lu du tout : au réveil,

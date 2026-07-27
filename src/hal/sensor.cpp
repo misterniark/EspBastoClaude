@@ -113,6 +113,21 @@ bool sensor_sim_is_active()
  */
 static void apply_reading(float raw_temp, float humidity)
 {
+    /* RÉ-AMORÇAGE du lissage après une longue interruption des
+     * lectures. En veille écran sans mode actif, le capteur n'est plus
+     * lu du tout : au réveil, mélanger la première mesure fraîche à une
+     * valeur vieille de plusieurs heures donne une température affichée
+     * fausse pendant 2 à 3 minutes — et retarde d'autant la coupure de
+     * sécurité C4, qui s'appuie sur cette valeur lissée. On repart donc
+     * de la mesure. Évalué AVANT de rafraîchir last_valid_ms. */
+    if (!first_reading
+        && !sensor_reading_is_fresh(millis(), last_valid_ms, true,
+                                    SENSOR_EMA_RESET_AGE_MS)) {
+        first_reading = true;
+        Serial.println("[SENSOR] Lectures interrompues trop longtemps : "
+                       "lissage re-amorce");
+    }
+
     current_humidity = humidity;
     last_raw_temp    = raw_temp;
     last_valid_ms    = millis();
@@ -490,6 +505,11 @@ unsigned long sensor_error_duration_ms()
 bool sensor_has_valid_reading()
 {
     return !first_reading;
+}
+
+bool sensor_blind_longer_than(unsigned long ms)
+{
+    return in_error && (millis() - error_start_ms) >= ms;
 }
 
 unsigned long sensor_last_valid_reading_ms()

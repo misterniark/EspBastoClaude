@@ -15,6 +15,7 @@
 
 #include "heater_fsm.h"
 #include "relay_reconcile.h"
+#include "setpoint_cut.h" /* Critère anti-glitch partagé avec les modes */
 #include "../comm/relay_link.h"
 #include "../comm/protocol.h"
 #include "../hal/sensor.h"
@@ -65,6 +66,13 @@ static void on_relay_event(uint8_t msg_type)
  * du 27/07/2026) laisserait le contrôleur bloqué en LOCKED à vie. */
 static unsigned long locked_since_ms = 0;
 
+/* Critère de surchauffe sur lectures brutes consécutives (C4), et
+ * horodatage de la dernière lecture déjà comptée : le compteur ne doit
+ * avancer que sur une mesure NEUVE. Remis à zéro à chaque entrée en
+ * chauffe (voir ACK_ON). */
+static SetpointCut   overtemp_cut;
+static unsigned long last_reading_ms = 0;
+
 /** Passe en LOCKED en armant le filet de sécurité. */
 static void enter_locked(const char *reason)
 {
@@ -79,6 +87,11 @@ static void process_event(uint8_t msg_type)
         case ACK_ON:
             if (current_state == HEATER_IDLE) {
                 current_state = HEATER_HEATING;
+                /* Nouvelle session de chauffe : repartir d'un compteur
+                 * de surchauffe vierge, et ne compter que les lectures
+                 * postérieures à cet instant. */
+                setpoint_cut_reset(overtemp_cut);
+                last_reading_ms = sensor_last_valid_reading_ms();
                 Serial.println("[HEATER] IDLE -> HEATING");
             }
             break;
@@ -195,24 +208,56 @@ void heater_fsm_update()
      * =================================================== */
     if (current_state != HEATER_HEATING) return;
 
-    /* C1 — Erreur capteur critique : arrêt forcé du chauffage.
-     * Si le capteur est en erreur depuis > 5 min, la température
-     * affichée est gelée → le thermostat ne peut pas réagir.
-     * On coupe ici, dans la couche core, pas dans l'UI. */
-    if (sensor_is_critical_error()) {
-        Serial.println("[HEATER] SECURITE : erreur capteur critique -> arret force");
+    /* C1 — Capteur aveugle : arrêt forcé du chauffage.
+     * Seuil VOLONTAIREMENT plus court que le critique global de 5 min
+     * (SENSOR_ERROR_TIMEOUT_HEATING_MS) : sans mesure, la température
+     * affichée est gelée, le thermostat ne peut plus réagir et C4
+     * ci-dessous n'a plus rien pour couper — l'appareil chaufferait à
+     * l'aveugle. Les modes thermostat et consigne utilisent le MÊME
+     * critère, pour s'arrêter au même instant (sinon ils
+     * redemanderaient aussitôt l'allumage → cyclage du relais). */
+    if (sensor_blind_longer_than(SENSOR_ERROR_TIMEOUT_HEATING_MS)) {
+        Serial.printf("[HEATER] SECURITE : erreur capteur critique (%lu s "
+                      "sans mesure) -> arret force\n",
+                      sensor_error_duration_ms() / 1000UL);
         relay_send_heat_off();
         current_state = HEATER_IDLE;
         safety_reason = HEATER_SAFETY_SENSOR;
         return;
     }
 
-    /* C4 — Température max de sécurité absolue.
-     * Si la température dépasse TEMP_SAFETY_MAX (40°C),
-     * on coupe le chauffage quel que soit le mode actif. */
-    if (!sensor_is_error() && sensor_get_temperature() >= TEMP_SAFETY_MAX) {
-        Serial.printf("[HEATER] SECURITE : temp %.1f >= %.1f -> arret force\n",
-                      sensor_get_temperature(), TEMP_SAFETY_MAX);
+    /* C4 — Température max de sécurité absolue (TEMP_SAFETY_MAX).
+     * C'est le SEUL verrou thermique absolu du système : il doit être
+     * le plus réactif possible.
+     *
+     * Deux critères, comme l'extinction des modes :
+     *   - la valeur lissée a atteint le seuil : preuve durable, mais
+     *     l'EMA traîne ~45 s derrière la réalité ;
+     *   - SETPOINT_CUT_READINGS lectures BRUTES consécutives au seuil :
+     *     coupe ~10 s après le franchissement réel, tout en absorbant
+     *     une lecture aberrante isolée.
+     * Le compteur de lectures brutes n'avance que sur une lecture
+     * NEUVE (une valeur gelée ne doit pas s'accumuler). */
+    unsigned long reading_ms = sensor_last_valid_reading_ms();
+    bool          fresh      = (reading_ms != last_reading_ms);
+    if (fresh) last_reading_ms = reading_ms;
+
+    bool overtemp = (!sensor_is_error()
+                     && sensor_get_temperature() >= TEMP_SAFETY_MAX);
+    bool overtemp_raw = false;
+    if (!overtemp && fresh) {
+        overtemp_raw = setpoint_cut_update(overtemp_cut,
+                                           sensor_get_raw_temperature(),
+                                           TEMP_SAFETY_MAX);
+        overtemp = overtemp_raw;
+    }
+
+    if (overtemp) {
+        Serial.printf("[HEATER] SECURITE : temp %.1f >= %.1f -> arret force%s\n",
+                      overtemp_raw ? sensor_get_raw_temperature()
+                                   : sensor_get_temperature(),
+                      TEMP_SAFETY_MAX,
+                      overtemp_raw ? " (lectures brutes)" : "");
         relay_send_heat_off();
         current_state = HEATER_IDLE;
         safety_reason = HEATER_SAFETY_OVERTEMP;

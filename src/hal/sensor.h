@@ -99,6 +99,22 @@ bool sensor_is_error();
  */
 bool sensor_is_critical_error();
 
+/**
+ * Retourne true si le capteur est en erreur DEPUIS AU MOINS ms.
+ *
+ * Sert au seuil raccourci appliqué PENDANT une chauffe
+ * (SENSOR_ERROR_TIMEOUT_HEATING_MS) : tolérer 5 minutes d'aveuglement
+ * est acceptable à l'arrêt, pas avec un appareil à combustion allumé —
+ * d'autant que la panne de sonde la plus probable (parasites du Webasto
+ * sur le câble OneWire) survient précisément pendant la chauffe.
+ *
+ * Le même critère est utilisé par heater_fsm (coupure) et par les modes
+ * thermostat/consigne (arrêt du mode) : les deux doivent se déclencher
+ * au même instant, sinon un mode encore actif redemanderait aussitôt
+ * l'allumage que la sécurité vient de couper — cyclage du relais.
+ */
+bool sensor_blind_longer_than(unsigned long ms);
+
 /** Retourne la durée de l'erreur en cours (en ms), ou 0 si pas d'erreur. */
 unsigned long sensor_error_duration_ms();
 

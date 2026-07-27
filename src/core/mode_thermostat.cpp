@@ -115,13 +115,17 @@ void thermostat_update()
 
     /*
      * Garde de securite C1bis : ne jamais decider avec un capteur mort.
-     * En erreur critique (>5 min), la temperature est gelee a sa derniere
-     * valeur : sans cette garde, si la valeur gelee est sous le seuil bas,
-     * le thermostat redemanderait l'allumage a chaque decision alors que
-     * heater_fsm_update() (C1) recouperait aussitot → cyclage ON/OFF du
-     * Webasto toutes les 60 s. On arrete donc le mode.
+     * Sans mesure, la temperature est gelee a sa derniere valeur : si
+     * cette valeur est sous le seuil bas, le thermostat redemanderait
+     * l'allumage a chaque decision alors que heater_fsm (C1) recouperait
+     * aussitot → cyclage ON/OFF du Webasto. On arrete donc le mode.
+     *
+     * MEME SEUIL que la coupure C1 de heater_fsm
+     * (SENSOR_ERROR_TIMEOUT_HEATING_MS) : les deux doivent se declencher
+     * au meme instant, sinon le mode survivrait a la coupure et
+     * relancerait la chauffe dans la seconde.
      */
-    if (sensor_is_critical_error()) {
+    if (sensor_blind_longer_than(SENSOR_ERROR_TIMEOUT_HEATING_MS)) {
         Serial.println("[THERMOSTAT] Erreur capteur critique → arret du mode");
         thermostat_stop();
         return;
