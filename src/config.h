@@ -99,8 +99,12 @@ constexpr int PIN_I2C_SCL = 16;
  *
  * La sonde Crowtail One Wire Waterproof 2.0 se branche sur le
  * connecteur UART1-OUT (HY2.0-4P). La broche signal du câble
- * Crowtail correspond à RX = IO18 côté ESP32-S3.
- * Si la sonde n'est pas détectée, essayer 17 (broche TX).
+ * Crowtail correspond à RX = IO18 côté ESP32-S3 (vérifié sur
+ * matériel : ROM 28085C8700164F15 détectée sur IO18).
+ *
+ * ATTENTION : le module Crowtail n'intègre PAS de résistance de
+ * rappel — sans le pull-up interne armé par ds_probe(), le bus
+ * flotte à 0 et la sonde est indétectable.
  * ========================================== */
 constexpr int PIN_ONEWIRE = 18;
 
@@ -286,8 +290,18 @@ constexpr int TIMER_MIN_MIN  = 1;
 constexpr int TIMER_MIN_MAX  = 120;
 constexpr int TIMER_MIN_STEP = 1;
 
-/* Intervalle de décision thermostat */
-constexpr unsigned long THERMOSTAT_DECISION_INTERVAL_MS = 60000; /* 60s */
+/* NOTE : l'ancien intervalle de décision de 60 s
+ * (THERMOSTAT_DECISION_INTERVAL_MS) a été supprimé : les modes
+ * thermostat et consigne décident désormais à chaque nouvelle lecture
+ * du capteur. L'anti-cyclage du relais est garanti par la bande
+ * d'hystérésis (thermostat) et par le caractère définitif de la
+ * coupure (consigne), plus le verrou 3 min côté relais. */
+
+/* Filet de sécurité de l'état LOCKED : si l'ACK_UNLOCKED du relais
+ * n'arrive jamais (perte radio, ou verrou jamais armé côté relais),
+ * le contrôleur revient en IDLE après ce délai — choisi supérieur au
+ * verrou nominal du relais (3 min) pour ne jamais le court-circuiter. */
+constexpr unsigned long HEATER_LOCKED_FAILSAFE_MS = 210000; /* 3 min 30 */
 
 /* ==========================================
  * Communication ESP-NOW

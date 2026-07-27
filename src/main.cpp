@@ -30,6 +30,9 @@
 #include "hal/backlight.h"
 #include "hal/sensor.h"
 #include "hal/battery.h"
+#ifdef TEST_CLI
+#include "hal/test_cli.h" /* Banc de test série (env crowpanel_test) */
+#endif
 
 /* Modules communication */
 #include "comm/espnow_manager.h"
@@ -133,6 +136,12 @@ void loop()
      */
     bool touch_consumed = power_update();
 
+#ifdef TEST_CLI
+    /* 1bis. Banc de test : exécuter les commandes série en attente
+     * (simulation de température, pilotage des modes). */
+    test_cli_update();
+#endif
+
     /* 2. Capteur : lecture périodique + lissage EMA.
      * Intervalle adaptatif pour économiser la batterie :
      *   - Écran actif  : 5s (affichage fluide)
@@ -150,6 +159,14 @@ void loop()
      */
     {
         bool any_mode = thermostat_is_active() || timer_mode_is_running() || setpoint_mode_is_active();
+#ifdef TEST_CLI
+        /* Banc de test : avec une température simulée, continuer à
+         * alimenter le capteur même écran éteint sans mode actif
+         * (sinon la simulation gèlerait dès la veille écran). */
+        if (sensor_sim_is_active()) {
+            sensor_update(5000);
+        } else
+#endif
         if (power_is_screen_off() && !any_mode) {
             /* Rien à faire — pas de lecture capteur */
         } else if (power_is_screen_off() && any_mode) {

@@ -2,19 +2,33 @@
  * @file mode_thermostat.cpp
  * @brief Implementation du mode A — Thermostat avec hysterese
  *
- * Logique de decision :
- *   - Si temperature < (consigne - hysterese) → allumer le chauffage
+ * Logique de decision (voir thermostat_policy.h pour la regle pure) :
+ *   - PREMIERE decision apres activation : allumer si temperature < consigne
+ *     (la bande d'hysterese ne doit pas retarder le premier allumage
+ *     explicitement demande par l'utilisateur)
+ *   - Ensuite : allumer si temperature < (consigne - hysterese)
  *   - Si temperature >= consigne → eteindre le chauffage
+ *     (extinction rapide : aussi des que SETPOINT_CUT_READINGS lectures
+ *     BRUTES consecutives atteignent la consigne, sans attendre le
+ *     rattrapage de l'EMA — meme critere anti-glitch que le mode C)
  *   - Entre les deux (zone morte) → ne rien changer
  *
- * Les decisions sont prises toutes les 60 secondes pour eviter
- * des basculements trop frequents. La temperature utilisee est
- * deja lissee par EMA dans le module sensor.
+ * Les decisions sont prises a CHAQUE nouvelle lecture du capteur
+ * (~5-10 s). L'ancien tick de 60 s laissait passer un depassement
+ * bref de la consigne entre deux decisions (aucune coupure alors que
+ * l'ecran affichait une temperature au-dessus de la consigne).
+ * L'anti-cyclage du relais est garanti par la bande d'hysterese
+ * elle-meme : apres une extinction a la consigne, le reallumage exige
+ * une chute reelle sous (consigne - hysterese) — de la dynamique
+ * thermique, pas de la lenteur d'evaluation.
  */
 
 #include "mode_thermostat.h"
 #include "heater_fsm.h"
+#include "thermostat_policy.h"
+#include "setpoint_cut.h"
 #include "../hal/sensor.h"
+#include "../comm/relay_link.h"
 #include "../config.h"
 #include <Arduino.h>
 
@@ -31,11 +45,17 @@ static float s_setpoint = DEFAULT_SETPOINT;
 /** Hysterese en °C (ecart sous la consigne pour declencher l'allumage) */
 static int s_hysteresis = DEFAULT_HYSTERESIS;
 
-/** Timestamp de la derniere evaluation (millis) */
-static unsigned long s_last_eval_ms = 0;
+/** Horodatage de la derniere lecture capteur deja evaluee : une
+ *  decision n'est prise que lorsqu'une NOUVELLE lecture est disponible
+ *  (inutile de re-evaluer une valeur qui n'a pas change). */
+static unsigned long s_last_reading_ms = 0;
 
 /** Premiere evaluation apres demarrage (pour forcer une evaluation immediate) */
 static bool s_first_eval = true;
+
+/** Critere d'extinction rapide sur lectures brutes consecutives
+ *  (anti-glitch, partage avec le mode consigne — setpoint_cut.h) */
+static SetpointCut s_off_cut;
 
 /* ==========================================
  * Fonctions publiques
@@ -65,7 +85,10 @@ bool thermostat_start(float setpoint, int hysteresis)
     s_hysteresis = constrain(hysteresis, HYSTERESIS_MIN, HYSTERESIS_MAX);
     s_active     = true;
     s_first_eval = true;
-    s_last_eval_ms = millis();
+    setpoint_cut_reset(s_off_cut);
+    /* Mémoriser la lecture courante : la première évaluation (forcée)
+     * la consommera, les suivantes attendront des lectures neuves. */
+    s_last_reading_ms = sensor_last_valid_reading_ms();
 
     Serial.println("[THERMOSTAT] Demarrage — consigne=" + String(s_setpoint, 1)
                    + "°C, hysterese=" + String(s_hysteresis) + "°C");
@@ -103,51 +126,100 @@ void thermostat_update()
         return;
     }
 
-    unsigned long now = millis();
-
     /*
-     * Verifier si l'intervalle de decision est ecoule.
-     * La premiere evaluation est forcee immediatement apres le demarrage.
+     * Ne decider que sur du neuf : soit la premiere evaluation (forcee
+     * juste apres le demarrage), soit l'arrivee d'une NOUVELLE lecture
+     * capteur (~5-10 s). L'ancien tick de 60 s pouvait laisser passer
+     * un depassement bref de la consigne entre deux decisions ;
+     * l'anti-cyclage est assure par la bande d'hysterese, pas par la
+     * lenteur des evaluations.
      */
-    if (!s_first_eval && (now - s_last_eval_ms < THERMOSTAT_DECISION_INTERVAL_MS)) {
+    unsigned long reading_ms = sensor_last_valid_reading_ms();
+    bool          fresh      = (reading_ms != s_last_reading_ms);
+
+    if (!s_first_eval && !fresh) {
         return;
     }
 
-    s_first_eval   = false;
-    s_last_eval_ms = now;
+    /* La premiere decision utilise la consigne comme seuil d'allumage
+     * (pas la bande) : memoriser AVANT de consommer le flag. */
+    bool initial = s_first_eval;
+    s_first_eval      = false;
+    s_last_reading_ms = reading_ms;
 
-    /* Lire la temperature lissee (EMA appliquee par le module sensor) */
+    /* Les deux estimateurs : lissee (EMA) et derniere lecture brute.
+     * L'allumage exige leur accord (anti-oscillation apres une
+     * extinction rapide — voir thermostat_policy.h). */
     float temp = sensor_get_temperature();
+    float raw  = sensor_get_raw_temperature();
 
-    /* Seuil bas : en dessous, on allume le chauffage */
-    float seuil_bas = s_setpoint - (float)s_hysteresis;
+    bool heating = (heater_get_state() == HEATER_HEATING);
 
-    HeaterState etat = heater_get_state();
+    /* Decision pure (allumage/extinction/rien) — voir thermostat_policy.h */
+    ThermostatAction action = thermostat_decide(temp, raw, s_setpoint,
+                                                (float)s_hysteresis,
+                                                heating, initial);
 
     /*
-     * Decision par hysterese :
-     *   - temp < seuil_bas      → demander l'allumage
-     *   - temp >= consigne       → demander l'extinction
-     *   - entre les deux         → zone morte, on ne change rien
+     * Extinction RAPIDE : l'EMA traine ~45 s derriere la temperature
+     * reelle ; sans ce raccourci, le chauffage continuerait bien
+     * au-dela de la consigne. Couper des que SETPOINT_CUT_READINGS
+     * lectures BRUTES consecutives atteignent la consigne (critere
+     * anti-glitch partage avec le mode C). L'ALLUMAGE, lui, reste
+     * uniquement sur l'EMA : allumer le Webasto sur une lecture
+     * aberrante serait pire qu'attendre une lecture de plus.
      */
-    if (temp < seuil_bas) {
-        /* Temperature sous le seuil bas : allumer si pas deja en chauffe */
-        if (etat != HEATER_HEATING) {
-            Serial.println("[THERMOSTAT] Temp=" + String(temp, 1)
-                           + "°C < seuil_bas=" + String(seuil_bas, 1)
-                           + "°C → demande allumage");
-            heater_request_on();
-        }
-    } else if (temp >= s_setpoint) {
-        /* Temperature atteint ou depasse la consigne : eteindre si en chauffe */
-        if (etat == HEATER_HEATING) {
-            Serial.println("[THERMOSTAT] Temp=" + String(temp, 1)
-                           + "°C >= consigne=" + String(s_setpoint, 1)
-                           + "°C → demande extinction");
-            heater_request_off();
+    bool raw_cut = false;
+    if (heating) {
+        if (action == THERMO_NONE && fresh &&
+            setpoint_cut_update(s_off_cut, raw, s_setpoint)) {
+            action  = THERMO_HEAT_OFF;
+            raw_cut = true;
         }
     } else {
-        /* Zone morte : on conserve l'etat actuel, pas de log repetitif */
+        /* Pas en chauffe : le compteur repart de zero pour la
+         * prochaine session */
+        setpoint_cut_reset(s_off_cut);
+    }
+
+    switch (action) {
+        case THERMO_HEAT_ON:
+            /* N'allumer que depuis IDLE et relais joignable : pendant
+             * le verrou anti-redémarrage (LOCKED) ou une coupure de
+             * liaison, demander en boucle ne ferait que du bruit
+             * (refus systématique) — on attend silencieusement, la
+             * demande aboutira à la lecture suivant le retour à la
+             * normale (reprise automatique du chauffage). */
+            if (heater_get_state() == HEATER_IDLE && relay_is_connected()) {
+                Serial.println("[THERMOSTAT] Temp=" + String(temp, 1)
+                               + "°C < seuil=" + String(initial ? s_setpoint
+                                     : s_setpoint - (float)s_hysteresis, 1)
+                               + "°C" + (initial ? " (1er allumage)" : "")
+                               + " → demande allumage");
+                heater_request_on();
+            }
+            break;
+
+        case THERMO_HEAT_OFF:
+            if (raw_cut) {
+                Serial.println("[THERMOSTAT] " + String(SETPOINT_CUT_READINGS)
+                               + " lectures brutes >= consigne="
+                               + String(s_setpoint, 1)
+                               + "°C (brute=" + String(raw, 1)
+                               + "°C, lissee=" + String(temp, 1)
+                               + "°C) → demande extinction rapide");
+            } else {
+                Serial.println("[THERMOSTAT] Temp=" + String(temp, 1)
+                               + "°C >= consigne=" + String(s_setpoint, 1)
+                               + "°C → demande extinction");
+            }
+            heater_request_off();
+            break;
+
+        case THERMO_NONE:
+        default:
+            /* Zone morte ou etat deja correct : pas de log repetitif */
+            break;
     }
 }
 

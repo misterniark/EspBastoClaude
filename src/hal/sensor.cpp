@@ -40,6 +40,11 @@
 static float filtered_temp     = 0.0f;
 static float current_humidity  = 0.0f;
 
+/* Dernière lecture BRUTE valide (non lissée) : utilisée par le mode
+ * consigne pour couper au plus près de la cible réelle, sans subir le
+ * retard du lissage EMA (voir core/setpoint_cut.h). */
+static float last_raw_temp     = 0.0f;
+
 /* État d'erreur */
 static bool         in_error         = false;
 static bool         first_reading    = true;
@@ -61,6 +66,44 @@ static bool force_read = false;
 /* Flag d'initialisation réussie */
 static bool initialized = false;
 
+#ifdef TEST_CLI
+/* ================================================================
+ * Simulation de température — BANC DE TEST UNIQUEMENT (-DTEST_CLI)
+ *
+ * Permet d'injecter des températures arbitraires par le port série
+ * pour tester les modes sans toucher la sonde physique. Les valeurs
+ * simulées passent par apply_reading() : EMA, fraîcheur et gestion
+ * d'erreur réelles sont exercées à l'identique.
+ * ================================================================ */
+static bool  sim_active = false;
+static bool  sim_error  = false; /* Panne capteur simulée (test C1) */
+static float sim_temp   = 20.0f;
+
+void sensor_sim_set(float t)
+{
+    sim_active = true;
+    sim_error  = false;
+    sim_temp   = t;
+}
+
+void sensor_sim_set_error()
+{
+    sim_active = true;
+    sim_error  = true;
+}
+
+void sensor_sim_off()
+{
+    sim_active = false;
+    sim_error  = false;
+}
+
+bool sensor_sim_is_active()
+{
+    return sim_active;
+}
+#endif /* TEST_CLI */
+
 /**
  * Intègre une lecture valide : première lecture directe, puis lissage
  * EMA. Réinitialise l'état d'erreur. Commun aux deux backends.
@@ -71,6 +114,7 @@ static bool initialized = false;
 static void apply_reading(float raw_temp, float humidity)
 {
     current_humidity = humidity;
+    last_raw_temp    = raw_temp;
     last_valid_ms    = millis();
 
     /* Première lecture : initialiser directement (pas de lissage) */
@@ -146,6 +190,17 @@ static uint8_t consecutive_failures = 0;
  */
 static bool ds_probe()
 {
+    /* Armer le pull-up interne (~45 kΩ) du GPIO : le module Crowtail
+     * n'intègre PAS de résistance de rappel externe (vérifié sur
+     * matériel : bus lu à 0 en entrée flottante) — sans ce pull-up,
+     * le bus OneWire flotte et la sonde est indétectable. Le registre
+     * de pull-up de l'ESP32 est indépendant de la direction : il
+     * survit aux bascules entrée/sortie en accès direct de la lib
+     * OneWire. Pour un câble long en environnement bruité (EMI du
+     * Webasto), une vraie résistance externe de 4,7 kΩ entre DATA et
+     * 3V3 resterait préférable. */
+    pinMode(PIN_ONEWIRE, INPUT_PULLUP);
+
     onewire.reset_search();
     if (!onewire.search(ds_addr)) return false;
 
@@ -177,7 +232,7 @@ bool sensor_init()
     if (!ds_probe()) {
         Serial.printf("[SENSOR] Erreur : DS18B20 non detecte sur OneWire (pin %d)\n",
                       PIN_ONEWIRE);
-        Serial.println("[SENSOR] Verifier le branchement sur UART1-OUT (signal = IO18)");
+        Serial.println("[SENSOR] Verifier le branchement sur UART1-OUT");
         in_error = true;
         error_start_ms = millis();
         return false;
@@ -222,6 +277,26 @@ void sensor_update(unsigned long interval_ms)
      * vérifications d'intervalle sont ignorées pour ce passage */
     bool force = force_read;
     force_read = false;
+
+#ifdef TEST_CLI
+    /* Banc de test : température simulée injectée au rythme normal
+     * des lectures. Le matériel n'est pas sollicité, et une éventuelle
+     * conversion en vol est abandonnée (son résultat écraserait la
+     * simulation). Fonctionne même sonde absente (initialized false).
+     * En mode « sim error », chaque lecture échoue : exerce le vrai
+     * chemin d'erreur (in_error, chrono critique C1 de 5 min). */
+    if (sim_active) {
+        conversion_pending = false;
+        if (!force && now - last_read_ms < interval) return;
+        last_read_ms = now;
+        if (sim_error) {
+            mark_read_error();
+        } else {
+            apply_reading(sim_temp, 0.0f);
+        }
+        return;
+    }
+#endif
 
     if (!initialized) {
         /* Sonde absente au boot : retenter périodiquement */
@@ -329,6 +404,19 @@ void sensor_update(unsigned long interval_ms)
     if (!force && now - last_read_ms < interval) return;
     last_read_ms = now;
 
+#ifdef TEST_CLI
+    /* Banc de test : température simulée injectée au rythme normal
+     * des lectures (voir le backend DS18B20 pour le détail). */
+    if (sim_active) {
+        if (sim_error) {
+            mark_read_error();
+        } else {
+            apply_reading(sim_temp, 0.0f);
+        }
+        return;
+    }
+#endif
+
     /* Tenter une lecture */
     sensors_event_t humidity_event, temp_event;
 
@@ -363,6 +451,11 @@ void sensor_update(unsigned long interval_ms)
 float sensor_get_temperature()
 {
     return filtered_temp;
+}
+
+float sensor_get_raw_temperature()
+{
+    return last_raw_temp;
 }
 
 float sensor_get_humidity()

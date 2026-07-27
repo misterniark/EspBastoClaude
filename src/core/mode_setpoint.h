@@ -38,8 +38,10 @@ void setpoint_mode_stop();
 /**
  * Mise a jour periodique du mode consigne.
  * A appeler dans la boucle principale (loop).
- * Evalue la temperature toutes les THERMOSTAT_DECISION_INTERVAL_MS
- * et arrete definitivement le chauffage si la cible est atteinte.
+ * Evalue la temperature a chaque nouvelle lecture du capteur et
+ * arrete definitivement le chauffage si la cible est atteinte
+ * (criteres : EMA >= cible, ou SETPOINT_CUT_READINGS lectures brutes
+ * consecutives >= cible — voir setpoint_cut.h).
  */
 void setpoint_mode_update();
 

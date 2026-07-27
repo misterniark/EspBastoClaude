@@ -38,6 +38,13 @@ void sensor_update(unsigned long interval_ms = 0);
  *  Vérifier sensor_has_valid_reading() avant d'utiliser cette valeur. */
 float sensor_get_temperature();
 
+/** Retourne la dernière lecture BRUTE valide (non lissée) en °C.
+ *  Plus réactive que la valeur EMA (qui traîne ~45 s derrière la
+ *  réalité) mais sensible au bruit : à n'utiliser qu'avec un critère
+ *  multi-lectures (voir core/setpoint_cut.h). Mêmes précautions que
+ *  sensor_get_temperature() : 0.0 tant qu'aucune lecture valide. */
+float sensor_get_raw_temperature();
+
 /** Retourne true si au moins une lecture valide a été effectuée.
  *  Tant que false, sensor_get_temperature() n'est pas fiable. */
 bool sensor_has_valid_reading();
@@ -94,5 +101,27 @@ bool sensor_is_critical_error();
 
 /** Retourne la durée de l'erreur en cours (en ms), ou 0 si pas d'erreur. */
 unsigned long sensor_error_duration_ms();
+
+#ifdef TEST_CLI
+/* ==========================================
+ * Simulation de température — BANC DE TEST UNIQUEMENT (-DTEST_CLI)
+ * Jamais compilé dans les firmwares normaux.
+ * ========================================== */
+
+/** Active la simulation : les lectures matérielles sont remplacées
+ *  par cette valeur (injectée via apply_reading, donc EMA/fraîcheur
+ *  réelles), au rythme normal des lectures. */
+void sensor_sim_set(float temp);
+
+/** Simule une PANNE capteur : chaque lecture échoue (exerce le vrai
+ *  chemin d'erreur — in_error, chrono critique C1 de 5 min). */
+void sensor_sim_set_error();
+
+/** Coupe la simulation : retour aux lectures matérielles. */
+void sensor_sim_off();
+
+/** Retourne true si la simulation est active. */
+bool sensor_sim_is_active();
+#endif /* TEST_CLI */
 
 #endif /* HAL_SENSOR_H */

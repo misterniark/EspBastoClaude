@@ -232,11 +232,18 @@ static void cb_hyst_plus(lv_event_t *e)
 
 /**
  * Met à jour le label de la consigne avec la valeur locale.
+ *
+ * NOTE : formatage via le snprintf de la libc et non
+ * lv_label_set_text_fmt — le printf interne de LVGL ne supporte pas
+ * les flottants (LV_SPRINTF_USE_FLOAT désactivé) et afficherait
+ * littéralement « f » à la place de la valeur.
  */
 static void refresh_setpoint_label()
 {
     if (lbl_setpoint_val) {
-        lv_label_set_text_fmt(lbl_setpoint_val, "%.1f\xC2\xB0""C", local_setpoint);
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%.1f\xC2\xB0""C", local_setpoint);
+        lv_label_set_text(lbl_setpoint_val, buf);
     }
 }
 
@@ -339,14 +346,19 @@ static void update_timer_cb(lv_timer_t *timer)
     float temp = sensor_get_temperature();
     bool heating = (heater_get_state() == HEATER_HEATING);
 
-    /* Mise à jour du label température central */
+    /* Mise à jour du label température central (snprintf libc : le
+     * printf LVGL ne gère pas %f, voir refresh_setpoint_label) */
     if (lbl_temp) {
-        lv_label_set_text_fmt(lbl_temp, "%.1f\xC2\xB0""C", temp);
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%.1f\xC2\xB0""C", temp);
+        lv_label_set_text(lbl_temp, buf);
     }
 
     /* Mise à jour du label cible */
     if (lbl_target) {
-        lv_label_set_text_fmt(lbl_target, "cible: %.1f\xC2\xB0""C", local_setpoint);
+        char buf[24];
+        snprintf(buf, sizeof(buf), "cible: %.1f\xC2\xB0""C", local_setpoint);
+        lv_label_set_text(lbl_target, buf);
     }
 
     /* Mise à jour de la valeur de l'arc (mappée 10-35°C) */
@@ -442,7 +454,12 @@ void scr_thermostat_create()
     lbl_target = lv_label_create(arc_cont);
     lv_obj_set_style_text_font(lbl_target, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(lbl_target, cl_text_dim, 0);
-    lv_label_set_text_fmt(lbl_target, "cible: %.1f\xC2\xB0""C", local_setpoint);
+    {
+        /* snprintf libc : le printf LVGL ne gère pas %f */
+        char buf[24];
+        snprintf(buf, sizeof(buf), "cible: %.1f\xC2\xB0""C", local_setpoint);
+        lv_label_set_text(lbl_target, buf);
+    }
     lv_obj_align(lbl_target, LV_ALIGN_CENTER, 0, 12);
 
     /* --- Rangée CONSIGNE : label + [-] + valeur + [+] --- */

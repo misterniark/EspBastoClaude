@@ -8,9 +8,10 @@
  *   - Extinction a partir de 21°C (consigne atteinte)
  *   - Zone morte entre 18°C et 21°C : etat inchange
  *
- * Le thermostat evalue la temperature toutes les 60 secondes
- * (THERMOSTAT_DECISION_INTERVAL_MS) et appelle heater_request_on()
- * ou heater_request_off() selon la decision.
+ * Le thermostat evalue la temperature a chaque nouvelle lecture du
+ * capteur (~5-10 s) et appelle heater_request_on() ou
+ * heater_request_off() selon la decision (regle pure :
+ * thermostat_policy.h ; extinction rapide : setpoint_cut.h).
  */
 
 #ifndef CORE_MODE_THERMOSTAT_H
@@ -36,15 +37,15 @@ bool thermostat_start(float setpoint, int hysteresis);
 
 /**
  * Arrete le mode thermostat.
- * N'envoie PAS de commande d'arret au chauffage : c'est au
- * code appelant de gerer l'arret si necessaire.
+ * I6 — Arrete aussi le chauffage s'il est en chauffe (l'arret n'est
+ * pas delegue au code appelant).
  */
 void thermostat_stop();
 
 /**
  * Mise a jour periodique du thermostat.
  * A appeler dans la boucle principale (loop).
- * Evalue la temperature toutes les THERMOSTAT_DECISION_INTERVAL_MS
+ * Evalue la temperature a chaque nouvelle lecture du capteur
  * et decide d'allumer ou d'eteindre le chauffage.
  */
 void thermostat_update();

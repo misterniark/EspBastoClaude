@@ -57,6 +57,21 @@ static void on_relay_event(uint8_t msg_type)
  * Traite un événement reçu du relais (appelé depuis loop() uniquement).
  * Gère les transitions d'état de manière sûre.
  */
+/* Instant d'entrée dans l'état LOCKED : arme le filet de sécurité
+ * HEATER_LOCKED_FAILSAFE_MS (voir heater_fsm_update). Sans lui, un
+ * ACK_UNLOCKED perdu (radio) ou jamais émis (relais déjà OFF au moment
+ * du HEAT_OFF → verrou non armé côté relais, constaté au banc de test
+ * du 27/07/2026) laisserait le contrôleur bloqué en LOCKED à vie. */
+static unsigned long locked_since_ms = 0;
+
+/** Passe en LOCKED en armant le filet de sécurité. */
+static void enter_locked(const char *reason)
+{
+    current_state   = HEATER_LOCKED;
+    locked_since_ms = millis();
+    Serial.println(reason);
+}
+
 static void process_event(uint8_t msg_type)
 {
     switch (msg_type) {
@@ -69,15 +84,13 @@ static void process_event(uint8_t msg_type)
 
         case ACK_OFF:
             if (current_state == HEATER_HEATING) {
-                current_state = HEATER_LOCKED;
-                Serial.println("[HEATER] HEATING -> LOCKED (verrou 3 min)");
+                enter_locked("[HEATER] HEATING -> LOCKED (verrou 3 min)");
             }
             break;
 
         case ACK_LOCKED:
             if (current_state != HEATER_LOCKED) {
-                current_state = HEATER_LOCKED;
-                Serial.println("[HEATER] -> LOCKED");
+                enter_locked("[HEATER] -> LOCKED");
             }
             break;
 
@@ -123,6 +136,20 @@ void heater_fsm_update()
     }
 
     /* ===================================================
+     * 1bis. Filet de sécurité de l'état LOCKED : si l'ACK_UNLOCKED
+     * n'arrive jamais (perte radio, ou relais qui n'avait pas armé son
+     * verrou car déjà éteint), revenir en IDLE après un délai supérieur
+     * au verrou nominal du relais (3 min). Sans ce filet, le contrôleur
+     * resterait verrouillé jusqu'au reboot.
+     * =================================================== */
+    if (current_state == HEATER_LOCKED
+        && millis() - locked_since_ms > HEATER_LOCKED_FAILSAFE_MS) {
+        current_state = HEATER_IDLE;
+        Serial.println("[HEATER] LOCKED -> IDLE (filet de securite : "
+                       "ACK_UNLOCKED jamais recu)");
+    }
+
+    /* ===================================================
      * 2. Vérifications de sécurité (uniquement si HEATING)
      * =================================================== */
     if (current_state != HEATER_HEATING) return;
@@ -156,9 +183,8 @@ void heater_fsm_update()
      * sera en verrou. On passe en LOCKED (pas IDLE) pour
      * refléter l'état réel du relais. */
     if (!relay_is_connected()) {
-        current_state = HEATER_LOCKED;
         connection_alert = true;
-        Serial.println("[HEATER] Perte connexion pendant HEATING -> LOCKED + alerte");
+        enter_locked("[HEATER] Perte connexion pendant HEATING -> LOCKED + alerte");
     }
 }
 
