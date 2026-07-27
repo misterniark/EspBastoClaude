@@ -128,7 +128,14 @@ static void on_action(lv_event_t *e)
     if (setpoint_mode_is_active()) {
         setpoint_mode_stop();
     } else {
-        setpoint_mode_start(setpoint_mode_get_target());
+        /* Refus possible (garde I4) : capteur en erreur, ou mesure
+         * obsolète juste après un réveil d'écran — dans ce dernier cas
+         * une lecture fraîche est déjà en cours (forcée au réveil),
+         * un nouvel appui ~1 s plus tard réussira. */
+        if (!setpoint_mode_start(setpoint_mode_get_target())) {
+            ui_toast(sensor_is_error() ? "Capteur indisponible"
+                                       : "Mesure en cours...");
+        }
     }
 }
 

@@ -28,6 +28,7 @@
  */
 
 #include "sensor.h"
+#include "sensor_freshness.h" /* Logique pure de fraîcheur (testée nativement) */
 #include "../config.h"
 #include <Arduino.h>
 
@@ -45,6 +46,18 @@ static bool         first_reading    = true;
 static unsigned long error_start_ms  = 0;
 static unsigned long last_read_ms    = 0;
 
+/* Horodatage de la dernière lecture VALIDE (posé dans apply_reading).
+ * Distinct de last_read_ms qui horodate les TENTATIVES de lecture :
+ * la fraîcheur d'une décision de chauffage se juge sur les valeurs
+ * réellement obtenues, pas sur les essais. */
+static unsigned long last_valid_ms = 0;
+
+/* Lecture forcée : armé par sensor_force_read() au réveil de l'écran,
+ * consommé par le prochain sensor_update() qui ignore alors son
+ * intervalle. Permet de rafraîchir la température immédiatement après
+ * une veille pendant laquelle le capteur n'était plus lu. */
+static bool force_read = false;
+
 /* Flag d'initialisation réussie */
 static bool initialized = false;
 
@@ -58,6 +71,7 @@ static bool initialized = false;
 static void apply_reading(float raw_temp, float humidity)
 {
     current_humidity = humidity;
+    last_valid_ms    = millis();
 
     /* Première lecture : initialiser directement (pas de lissage) */
     if (first_reading) {
@@ -182,15 +196,36 @@ bool sensor_init()
     return true;
 }
 
+void sensor_force_read()
+{
+    force_read = true;
+
+    /* Abandonner une éventuelle conversion restée en attente : si la
+     * veille écran a figé la boucle capteur pendant qu'une conversion
+     * était en cours, le scratchpad du DS18B20 contient une température
+     * mesurée AVANT la veille (potentiellement vieille de plusieurs
+     * heures). La relever maintenant la ferait passer pour fraîche
+     * (last_valid_ms = maintenant) et réintroduirait exactement le
+     * défaut que la lecture forcée corrige. On relance donc une
+     * conversion neuve — au pire on perd une conversion légitime en
+     * vol (~800 ms de délai supplémentaire, sans conséquence). */
+    conversion_pending = false;
+}
+
 void sensor_update(unsigned long interval_ms)
 {
     /* Utiliser l'intervalle par défaut si non spécifié */
     unsigned long interval = (interval_ms > 0) ? interval_ms : SENSOR_READ_INTERVAL_MS;
     unsigned long now = millis();
 
+    /* Lecture forcée (réveil écran) : consommer le drapeau, les
+     * vérifications d'intervalle sont ignorées pour ce passage */
+    bool force = force_read;
+    force_read = false;
+
     if (!initialized) {
         /* Sonde absente au boot : retenter périodiquement */
-        if (now - last_read_ms < interval) return;
+        if (!force && now - last_read_ms < interval) return;
         last_read_ms = now;
 
         if (ds_probe()) {
@@ -223,8 +258,8 @@ void sensor_update(unsigned long interval_ms)
         }
     } else {
         /* Phase 1 : lancer une nouvelle conversion si l'intervalle
-         * de lecture est écoulé */
-        if (now - last_read_ms < interval) return;
+         * de lecture est écoulé (ou si une lecture forcée est demandée) */
+        if (!force && now - last_read_ms < interval) return;
         last_read_ms = now;
 
         /* Un échec immédiat de la requête (aucune présence sur le bus)
@@ -272,14 +307,26 @@ bool sensor_init()
     return true;
 }
 
+void sensor_force_read()
+{
+    /* AHT21 : lecture I2C synchrone, il suffit d'ignorer l'intervalle
+     * au prochain sensor_update() pour obtenir une valeur fraîche */
+    force_read = true;
+}
+
 void sensor_update(unsigned long interval_ms)
 {
     /* Utiliser l'intervalle par défaut si non spécifié */
     unsigned long interval = (interval_ms > 0) ? interval_ms : SENSOR_READ_INTERVAL_MS;
 
+    /* Lecture forcée (réveil écran) : consommer le drapeau, la
+     * vérification d'intervalle est ignorée pour ce passage */
+    bool force = force_read;
+    force_read = false;
+
     /* Ne rien faire si l'intervalle n'est pas écoulé */
     unsigned long now = millis();
-    if (now - last_read_ms < interval) return;
+    if (!force && now - last_read_ms < interval) return;
     last_read_ms = now;
 
     /* Tenter une lecture */
@@ -345,4 +392,17 @@ unsigned long sensor_error_duration_ms()
 bool sensor_has_valid_reading()
 {
     return !first_reading;
+}
+
+unsigned long sensor_last_valid_reading_ms()
+{
+    return last_valid_ms;
+}
+
+bool sensor_reading_is_recent(unsigned long max_age_ms)
+{
+    /* Délégation à la logique pure (testée nativement). Le cast en
+     * uint32_t est sans perte : millis() est déjà sur 32 bits. */
+    return sensor_reading_is_fresh((uint32_t)millis(), (uint32_t)last_valid_ms,
+                                   !first_reading, (uint32_t)max_age_ms);
 }

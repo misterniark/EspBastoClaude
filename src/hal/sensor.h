@@ -42,6 +42,41 @@ float sensor_get_temperature();
  *  Tant que false, sensor_get_temperature() n'est pas fiable. */
 bool sensor_has_valid_reading();
 
+/** Retourne l'horodatage millis() de la dernière lecture VALIDE.
+ *  Sans signification tant que sensor_has_valid_reading() est false. */
+unsigned long sensor_last_valid_reading_ms();
+
+/**
+ * Retourne true si la dernière lecture VALIDE date d'au plus max_age_ms.
+ * false si aucune lecture valide n'a jamais eu lieu.
+ *
+ * En veille écran sans mode actif, le capteur n'est plus lu du tout :
+ * au réveil, sensor_get_temperature() peut renvoyer une valeur gelée
+ * depuis des heures alors que sensor_is_error() est resté false.
+ * Cette fonction fournit le critère de fraîcheur manquant, utilisé
+ * par les gardes I4 des modes thermostat et consigne.
+ *
+ * @param max_age_ms Âge maximal accepté (borne incluse),
+ *                   typiquement SENSOR_MAX_AGE_BEFORE_START_MS
+ */
+bool sensor_reading_is_recent(unsigned long max_age_ms);
+
+/**
+ * Force une lecture immédiate au prochain appel de sensor_update()
+ * (l'intervalle de lecture est ignoré pour ce passage).
+ * À appeler au réveil de l'écran pour rafraîchir la température
+ * avant que l'utilisateur ne démarre un mode.
+ *
+ *   - CYD (AHT21)       : la lecture I2C est synchrone, la valeur est
+ *                         fraîche dès le sensor_update() suivant.
+ *   - CrowPanel (DS18B20) : une éventuelle conversion restée en attente
+ *                         depuis la veille est ABANDONNÉE (son résultat
+ *                         daterait d'avant la veille) et une conversion
+ *                         neuve est lancée ; la valeur fraîche arrive
+ *                         ~800 ms plus tard (DS18B20_CONVERSION_MS).
+ */
+void sensor_force_read();
+
 /** Retourne l'humidité relative en %.
  *  ATTENTION : toujours 0.0 sur CrowPanel (le DS18B20 ne mesure
  *  que la température). */

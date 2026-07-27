@@ -137,6 +137,15 @@ void loop()
      *   - Écran actif  : 5s (affichage fluide)
      *   - Écran veille + mode actif : 10s (thermostat décide toutes les 60s)
      *   - Écran veille + aucun mode : pas de lecture (inutile)
+     *
+     * Conséquence assumée du dernier cas : au réveil, la température est
+     * gelée depuis la mise en veille. Deux protections compensent :
+     *   - power_update() force une lecture immédiate au réveil
+     *     (sensor_force_read) — elle a lieu dès le sensor_update()
+     *     ci-dessous, l'écran étant rallumé ;
+     *   - les gardes I4 de thermostat_start()/setpoint_mode_start()
+     *     refusent tout démarrage tant que la dernière lecture VALIDE
+     *     date de plus de SENSOR_MAX_AGE_BEFORE_START_MS (60 s).
      */
     {
         bool any_mode = thermostat_is_active() || timer_mode_is_running() || setpoint_mode_is_active();

@@ -117,8 +117,15 @@ static void cb_start_stop(lv_event_t *e)
         thermostat_stop();
         heater_request_off();
     } else {
-        /* Démarrer le thermostat avec les paramètres locaux */
-        thermostat_start(local_setpoint, local_hysteresis);
+        /* Démarrer le thermostat avec les paramètres locaux.
+         * Refus possible (garde I4) : capteur en erreur, ou mesure
+         * obsolète juste après un réveil d'écran — dans ce dernier cas
+         * une lecture fraîche est déjà en cours (forcée au réveil),
+         * un nouvel appui ~1 s plus tard réussira. */
+        if (!thermostat_start(local_setpoint, local_hysteresis)) {
+            ui_toast(sensor_is_error() ? "Capteur indisponible"
+                                       : "Mesure en cours...");
+        }
     }
     /* Mise à jour immédiate du bouton */
     update_action_button();

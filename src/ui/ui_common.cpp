@@ -133,3 +133,67 @@ lv_obj_t* ui_create_adjust_btn(lv_obj_t *parent, const char *text, int width, in
 
     return btn;
 }
+
+/* ==========================================
+ * Toast — Message temporaire
+ * ========================================== */
+
+/** Conteneur du toast en cours (NULL si aucun) */
+static lv_obj_t *toast_box = NULL;
+
+/** Timer one-shot de disparition du toast */
+static lv_timer_t *toast_timer = NULL;
+
+/** Durée d'affichage du toast en ms */
+static constexpr uint32_t TOAST_DURATION_MS = 2000;
+
+/**
+ * Callback du timer : supprime le toast et libère les références.
+ * Le timer est one-shot (repeat_count = 1), LVGL le supprime lui-même
+ * après ce callback — il ne faut PAS le supprimer ici.
+ */
+static void toast_timer_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    if (toast_box) {
+        lv_obj_del(toast_box);
+        toast_box = NULL;
+    }
+    toast_timer = NULL;
+}
+
+void ui_toast(const char *text)
+{
+    /* Remplacer un éventuel toast déjà affiché */
+    if (toast_box) {
+        lv_obj_del(toast_box);
+        toast_box = NULL;
+    }
+    if (toast_timer) {
+        lv_timer_del(toast_timer);
+        toast_timer = NULL;
+    }
+
+    /* Conteneur sur la couche du dessus : visible par-dessus tous les
+     * widgets et indépendant de l'écran courant */
+    toast_box = lv_obj_create(lv_layer_top());
+    lv_obj_add_style(toast_box, &style_card, 0);
+    lv_obj_set_style_border_width(toast_box, 1, 0);
+    lv_obj_set_style_border_color(toast_box, cl_border, 0);
+    lv_obj_set_size(toast_box, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_all(toast_box, 8, 0);
+    lv_obj_clear_flag(toast_box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(toast_box, LV_OBJ_FLAG_CLICKABLE);
+    /* Juste au-dessus de la barre d'action */
+    lv_obj_align(toast_box, LV_ALIGN_BOTTOM_MID, 0, -(ACTION_BAR_HEIGHT + 8));
+
+    lv_obj_t *label = lv_label_create(toast_box);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(label, cl_text, 0);
+    lv_obj_center(label);
+
+    /* Disparition automatique après TOAST_DURATION_MS */
+    toast_timer = lv_timer_create(toast_timer_cb, TOAST_DURATION_MS, NULL);
+    lv_timer_set_repeat_count(toast_timer, 1);
+}

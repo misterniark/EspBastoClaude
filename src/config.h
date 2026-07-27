@@ -244,6 +244,15 @@ constexpr float SENSOR_EMA_ALPHA      = 0.1f;     /* Coefficient lissage EMA */
 constexpr unsigned long SENSOR_READ_INTERVAL_MS = 2000;
 constexpr unsigned long SENSOR_ERROR_TIMEOUT_MS = 300000; /* 5 min avant arrêt sécurité */
 
+/* Âge maximal de la dernière lecture VALIDE pour autoriser le démarrage
+ * d'un mode de chauffage piloté par la température (thermostat, consigne).
+ * En veille sans mode actif, le capteur n'est plus lu du tout : au réveil,
+ * la valeur peut dater de plusieurs heures. 60 s couvre largement les
+ * intervalles de lecture normaux (5 s écran allumé, 10 s en veille avec
+ * mode actif) et la conversion asynchrone du DS18B20 (~800 ms) déclenchée
+ * au réveil, tout en refusant les valeurs gelées de la veille. */
+constexpr unsigned long SENSOR_MAX_AGE_BEFORE_START_MS = 60000;
+
 /* DS18B20 uniquement (CrowPanel) : budget de conversion 12 bits.
  * La lecture est asynchrone : on lance la conversion, puis on relit
  * le résultat au passage suivant de la boucle, après ce délai.

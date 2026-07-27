@@ -94,4 +94,19 @@ lv_obj_t* ui_create_btn(lv_obj_t *parent, const char *text, int width, int heigh
  */
 lv_obj_t* ui_create_adjust_btn(lv_obj_t *parent, const char *text, int width, int height);
 
+/**
+ * Affiche un message temporaire (toast) en bas de l'écran, au-dessus
+ * de la barre d'action. Disparaît automatiquement après 2 secondes.
+ * Un nouvel appel remplace le toast en cours et relance le délai.
+ *
+ * Créé sur lv_layer_top() : survit aux changements d'écran et reste
+ * visible par-dessus tous les widgets.
+ *
+ * Utilisé notamment quand le démarrage d'un mode est refusé parce que
+ * la mesure de température n'est pas encore fraîche (réveil d'écran).
+ *
+ * @param text Message à afficher (copié par LVGL)
+ */
+void ui_toast(const char *text);
+
 #endif /* UI_COMMON_H */

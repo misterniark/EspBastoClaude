@@ -17,9 +17,17 @@
  * Demarre le mode consigne et allume le chauffage.
  * Le flag "reached" est reinitialise.
  *
+ * Garde I4 : le demarrage est refuse si le capteur n'est pas pret —
+ * aucune lecture valide, erreur en cours, ou derniere lecture valide
+ * plus vieille que SENSOR_MAX_AGE_BEFORE_START_MS (cas typique :
+ * reveil d'ecran apres une veille sans mode actif ; voir
+ * mode_thermostat.h pour le detail). Reessayer ~1 s plus tard
+ * suffit en general.
+ *
  * @param target Temperature cible en °C
+ * @return true si le mode a demarre, false si refuse (capteur non pret)
  */
-void setpoint_mode_start(float target);
+bool setpoint_mode_start(float target);
 
 /**
  * Arrete le mode consigne et eteint le chauffage.

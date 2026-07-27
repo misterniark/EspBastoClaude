@@ -41,12 +41,24 @@ static bool s_first_eval = true;
  * Fonctions publiques
  * ========================================== */
 
-void thermostat_start(float setpoint, int hysteresis)
+bool thermostat_start(float setpoint, int hysteresis)
 {
     /* I4 — Le mode A nécessite un capteur fonctionnel */
     if (!sensor_has_valid_reading() || sensor_is_error()) {
         Serial.println("[THERMOSTAT] Demarrage refuse : capteur non pret");
-        return;
+        return false;
+    }
+
+    /* I4bis — La lecture doit aussi être RÉCENTE : en veille écran sans
+     * mode actif, le capteur n'est plus lu du tout ; au réveil, la
+     * température est gelée depuis la mise en veille et l'état d'erreur
+     * est lui aussi obsolète — les deux tests ci-dessus passeraient à
+     * tort. Une lecture fraîche est forcée au réveil (power_manager) :
+     * elle arrive en ~0 s (AHT21) à ~800 ms (conversion DS18B20). */
+    if (!sensor_reading_is_recent(SENSOR_MAX_AGE_BEFORE_START_MS)) {
+        Serial.println("[THERMOSTAT] Demarrage refuse : mesure obsolete, "
+                       "lecture en cours");
+        return false;
     }
 
     s_setpoint   = constrain(setpoint, SETPOINT_MIN, SETPOINT_MAX);
@@ -57,6 +69,7 @@ void thermostat_start(float setpoint, int hysteresis)
 
     Serial.println("[THERMOSTAT] Demarrage — consigne=" + String(s_setpoint, 1)
                    + "°C, hysterese=" + String(s_hysteresis) + "°C");
+    return true;
 }
 
 void thermostat_stop()

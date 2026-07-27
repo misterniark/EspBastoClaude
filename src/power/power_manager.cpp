@@ -24,6 +24,7 @@
 #include "../config.h"
 #include "../hal/backlight.h"
 #include "../hal/touchpad.h" /* hal_touchpad_ignore_until_release() */
+#include "../hal/sensor.h"   /* sensor_force_read() au réveil */
 #include <Arduino.h>
 #include <lvgl.h>
 
@@ -87,6 +88,16 @@ bool power_update()
             /* Forcer LVGL à redessiner tout l'écran au réveil
              * (le rendu était stoppé pendant la veille) */
             lv_obj_invalidate(lv_scr_act());
+
+            /* Forcer une lecture capteur immédiate : en veille sans mode
+             * actif, le capteur n'était plus lu du tout et la température
+             * affichée/décidée serait gelée depuis la mise en veille.
+             * Le sensor_update() de cette même itération de loop()
+             * (l'écran étant rallumé) lira l'AHT21 tout de suite, ou
+             * lancera une conversion DS18B20 neuve (~800 ms). Tant que
+             * la valeur fraîche n'est pas arrivée, les gardes I4 des
+             * modes refusent le démarrage (SENSOR_MAX_AGE_BEFORE_START_MS). */
+            sensor_force_read();
 
             Serial.println("[POWER] Écran réveillé (toucher consommé)");
             return true; /* Toucher consommé */

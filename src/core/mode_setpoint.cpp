@@ -43,12 +43,22 @@ static bool s_first_eval = true;
  * Fonctions publiques
  * ========================================== */
 
-void setpoint_mode_start(float target)
+bool setpoint_mode_start(float target)
 {
     /* I4 — Le mode C nécessite un capteur fonctionnel */
     if (!sensor_has_valid_reading() || sensor_is_error()) {
         Serial.println("[SETPOINT] Demarrage refuse : capteur non pret");
-        return;
+        return false;
+    }
+
+    /* I4bis — La lecture doit aussi être RÉCENTE (même garde que le
+     * thermostat, voir mode_thermostat.cpp) : au réveil d'une veille
+     * sans mode actif, la température est gelée depuis des heures et
+     * les deux tests ci-dessus passeraient à tort. */
+    if (!sensor_reading_is_recent(SENSOR_MAX_AGE_BEFORE_START_MS)) {
+        Serial.println("[SETPOINT] Demarrage refuse : mesure obsolete, "
+                       "lecture en cours");
+        return false;
     }
 
     s_target   = constrain(target, SETPOINT_MIN, SETPOINT_MAX);
@@ -61,6 +71,7 @@ void setpoint_mode_start(float target)
 
     /* Demander l'allumage du chauffage */
     heater_request_on();
+    return true;
 }
 
 void setpoint_mode_stop()

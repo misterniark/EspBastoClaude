@@ -20,10 +20,19 @@
  * Demarre le mode thermostat avec les parametres donnes.
  * La premiere evaluation a lieu immediatement.
  *
+ * Garde I4 : le demarrage est refuse si le capteur n'est pas pret —
+ * aucune lecture valide, erreur en cours, ou derniere lecture valide
+ * plus vieille que SENSOR_MAX_AGE_BEFORE_START_MS (cas typique :
+ * reveil d'ecran apres une veille sans mode actif, pendant laquelle
+ * le capteur n'est plus lu ; la valeur gelee ne doit pas fonder une
+ * decision de chauffage). Une lecture fraiche est forcee au reveil :
+ * reessayer ~1 s plus tard suffit en general.
+ *
  * @param setpoint   Temperature de consigne en °C
  * @param hysteresis Hysterese en °C (ecart sous la consigne pour allumer)
+ * @return true si le mode a demarre, false si refuse (capteur non pret)
  */
-void thermostat_start(float setpoint, int hysteresis);
+bool thermostat_start(float setpoint, int hysteresis);
 
 /**
  * Arrete le mode thermostat.
