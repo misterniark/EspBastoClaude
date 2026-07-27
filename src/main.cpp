@@ -73,10 +73,10 @@ void setup()
     /* --- 3. Thème et styles UI --- */
     ui_common_init();
 
-    /* --- 4. Capteur AHT21 --- */
+    /* --- 4. Capteur de température (AHT21 sur CYD, DS18B20 sur CrowPanel) --- */
     bool sensor_ok = sensor_init();
     if (!sensor_ok) {
-        Serial.println("[INIT] ATTENTION : Capteur AHT21 non détecté !");
+        Serial.println("[INIT] ATTENTION : Capteur " SENSOR_NAME " non détecté !");
     }
 
     /* --- 4b. Jauge batterie MAX17048 (même bus I2C) --- */
@@ -179,8 +179,9 @@ void loop()
     /*
      * 6. Rendu LVGL : traiter les timers, les animations et le redessin.
      *    Le handler gère aussi la lecture du touchpad via le callback enregistré.
-     *    Si un toucher de réveil a été consommé, LVGL ne verra pas de toucher
-     *    car power_update() a déjà lu l'état du touchpad.
+     *    Si un toucher de réveil a été consommé, le driver tactile masque
+     *    les contacts pour LVGL jusqu'au relâchement du doigt
+     *    (hal_touchpad_ignore_until_release, armé par power_update).
      */
     if (!touch_consumed) {
         /* Réinitialiser le timer d'inactivité si un toucher est actif */

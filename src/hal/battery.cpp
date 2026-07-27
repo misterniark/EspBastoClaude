@@ -30,7 +30,10 @@ constexpr float BATTERY_LOW_PERCENT = 10.0f;
 
 bool battery_init()
 {
-    /* Le bus I2C est déjà initialisé par sensor_init() (Wire.begin(27, 22)) */
+    /* Le bus I2C est déjà initialisé en amont dans main.cpp :
+     *   - CYD : par sensor_init() (Wire.begin(27, 22), connecteur CN1)
+     *   - CrowPanel : par hal_touchpad_init() (Wire.begin(15, 16),
+     *     bus partagé tactile + connecteur I2C-OUT) */
     if (!fuel_gauge.begin(&Wire)) {
         Serial.println("[BATTERY] MAX17048 non detecte sur I2C");
         available = false;

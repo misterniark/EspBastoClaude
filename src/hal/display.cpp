@@ -1,6 +1,10 @@
 /**
  * @file display.cpp
- * @brief Implémentation du driver d'affichage TFT ILI9341 pour LVGL
+ * @brief Implémentation du driver d'affichage TFT pour LVGL
+ *
+ * Contrôleur selon le matériel (piloté par TFT_eSPI via build_flags) :
+ *   - CYD : ILI9341 (SPI HSPI)
+ *   - CrowPanel : ST7789 (SPI2/FSPI, inversion couleurs activée)
  *
  * Configure TFT_eSPI en mode portrait (240x320) et enregistre
  * le callback flush pour que LVGL puisse dessiner à l'écran.
@@ -48,7 +52,7 @@ void hal_display_init()
 {
     /* Initialisation TFT */
     tft.init();
-    tft.setRotation(0); /* Portrait : 240 large x 320 haut */
+    tft.setRotation(TFT_ROTATION); /* Portrait : 240 large x 320 haut (config.h) */
     tft.fillScreen(TFT_BLACK);
 
     /* Allumer le rétroéclairage */

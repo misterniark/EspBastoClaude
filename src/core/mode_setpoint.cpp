@@ -84,6 +84,18 @@ void setpoint_mode_update()
         return;
     }
 
+    /*
+     * Garde de securite C1bis (comme le thermostat) : avec un capteur en
+     * erreur critique, la temperature est gelee et la cible ne sera jamais
+     * legitimement "atteinte" — le mode resterait actif indefiniment alors
+     * que heater_fsm (C1) a deja coupe le chauffage. On arrete le mode.
+     */
+    if (sensor_is_critical_error()) {
+        Serial.println("[SETPOINT] Erreur capteur critique → arret du mode");
+        setpoint_mode_stop();
+        return;
+    }
+
     unsigned long now = millis();
 
     /*

@@ -1,9 +1,11 @@
 /**
  * @file sensor.h
- * @brief Lecture du capteur AHT21 avec lissage EMA
+ * @brief Lecture du capteur de température avec lissage EMA
  *
- * Gère la lecture périodique (toutes les 2s) du capteur de température
- * et d'humidité AHT21 sur le bus I2C externe (CN1).
+ * Gère la lecture périodique du capteur de température :
+ *   - CYD : AHT21 (température + humidité) sur I2C externe (CN1)
+ *   - CrowPanel : sonde étanche DS18B20 (température seule) sur
+ *     OneWire, connecteur UART1-OUT (lecture asynchrone, 750ms)
  * Applique un lissage par moyenne mobile exponentielle (α=0.1).
  * Détecte les erreurs de lecture et gère le timeout de sécurité (5 min).
  */
@@ -12,8 +14,10 @@
 #define HAL_SENSOR_H
 
 /**
- * Initialise le bus I2C externe et le capteur AHT21.
- * Wire.begin(SDA=27, SCL=22) sur le connecteur CN1.
+ * Initialise le capteur de température.
+ *   - CYD : Wire.begin(SDA=27, SCL=22) puis détection AHT21.
+ *   - CrowPanel : détection DS18B20 sur le bus OneWire (pin 18)
+ *     et lancement de la première conversion.
  *
  * @return true si le capteur est détecté et initialisé
  */
@@ -38,7 +42,9 @@ float sensor_get_temperature();
  *  Tant que false, sensor_get_temperature() n'est pas fiable. */
 bool sensor_has_valid_reading();
 
-/** Retourne l'humidité relative en %. */
+/** Retourne l'humidité relative en %.
+ *  ATTENTION : toujours 0.0 sur CrowPanel (le DS18B20 ne mesure
+ *  que la température). */
 float sensor_get_humidity();
 
 /** Retourne true si le capteur est en erreur (lecture échouée). */

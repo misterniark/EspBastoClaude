@@ -4,19 +4,26 @@
  *
  * Logique de veille écran :
  *   - Timer d'inactivité de 60 secondes
- *   - Si aucune action tactile pendant 60s → backlight OFF + ILI9341 SLPIN
+ *   - Si aucune action tactile pendant 60s → backlight OFF + TFT SLPIN
  *   - Au toucher suivant → SLPOUT + 120ms + backlight ON
- *   - Ce premier toucher de réveil est CONSOMMÉ (ne déclenche pas d'action UI)
+ *   - Le toucher de réveil est consommé via hal_touchpad_ignore_until_release() :
+ *     le driver tactile masque tous les contacts pour LVGL jusqu'au
+ *     relâchement complet du doigt (sans cela, LVGL verrait le doigt
+ *     encore posé et émettrait un clic sur le widget sous le doigt)
  *
  * Optimisations :
  *   - CPU réduit à 80 MHz (suffisant pour LVGL + ESP-NOW)
- *   - LEDs RGB éteintes (actives à l'état bas, donc HIGH = OFF)
+ *   - CYD : LEDs RGB éteintes (actives à l'état bas, donc HIGH = OFF)
+ *     et haut-parleur forcé LOW
+ *   - CrowPanel : buzzer forcé LOW. Les GPIO des LEDs du CYD (4/16/17)
+ *     ne doivent PAS être touchés ici : sur le CrowPanel, 16 = SCL du
+ *     tactile et 17 = TX du port UART1-OUT (sonde DS18B20).
  */
 
 #include "power_manager.h"
 #include "../config.h"
 #include "../hal/backlight.h"
-#include "../hal/touchpad.h"
+#include "../hal/touchpad.h" /* hal_touchpad_ignore_until_release() */
 #include <Arduino.h>
 #include <lvgl.h>
 
@@ -30,6 +37,11 @@ void power_init()
     setCpuFrequencyMhz(CPU_FREQ_MHZ);
     Serial.printf("[POWER] CPU à %d MHz\n", CPU_FREQ_MHZ);
 
+#ifdef HW_CROWPANEL
+    /* Forcer le buzzer passif en LOW pour éviter tout sifflement */
+    pinMode(PIN_BUZZER, OUTPUT);
+    digitalWrite(PIN_BUZZER, LOW);
+#else
     /* Éteindre les LEDs RGB (actives à l'état bas → HIGH = éteint) */
     pinMode(PIN_LED_RED, OUTPUT);
     pinMode(PIN_LED_GREEN, OUTPUT);
@@ -41,6 +53,7 @@ void power_init()
     /* Forcer la pin speaker en LOW pour éviter les oscillations */
     pinMode(PIN_SPEAKER, OUTPUT);
     digitalWrite(PIN_SPEAKER, LOW);
+#endif
 
     /* Initialiser le timer d'inactivité */
     last_activity_ms = millis();
@@ -63,6 +76,13 @@ bool power_update()
             display_wake();
             screen_off = false;
             last_activity_ms = now;
+
+            /* Consommer réellement le toucher de réveil : masquer les
+             * contacts pour LVGL jusqu'au relâchement du doigt. Lire
+             * l'état du contrôleur ne suffit pas (il rapporte le contact
+             * tant que le doigt est posé) et lv_timer_handler() tourne
+             * dès cette itération, l'écran étant rallumé. */
+            hal_touchpad_ignore_until_release();
 
             /* Forcer LVGL à redessiner tout l'écran au réveil
              * (le rendu était stoppé pendant la veille) */
