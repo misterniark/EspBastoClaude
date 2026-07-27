@@ -42,12 +42,20 @@ void espnow_init();
 void espnow_set_recv_callback(espnow_recv_cb_t cb);
 
 /**
- * Ajoute un peer ESP-NOW (adresse MAC du relais).
+ * Ajoute un peer ESP-NOW.
  *
  * @param mac_addr Adresse MAC du peer (6 octets)
+ * @param encrypt  true pour chiffrer les échanges avec ce peer
+ *                 (PMK/LMK de config.h). OBLIGATOIREMENT false pour
+ *                 l'adresse de diffusion : ESP-NOW interdit le
+ *                 chiffrement en broadcast.
+ *
+ *                 Un peer déjà présent avec un mode de chiffrement
+ *                 différent est recréé : c'est ce qui permet de passer
+ *                 du clair (découverte) au chiffré (exploitation).
  * @return true si le peer a été ajouté avec succès
  */
-bool espnow_add_peer(const uint8_t *mac_addr);
+bool espnow_add_peer(const uint8_t *mac_addr, bool encrypt = false);
 
 /**
  * Supprime un peer ESP-NOW.

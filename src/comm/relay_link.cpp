@@ -9,6 +9,7 @@
 
 #include "relay_link.h"
 #include "espnow_manager.h"
+#include "peer_filter.h"
 #include "protocol.h"
 #include "../core/storage.h"
 #include "../core/relay_reconcile.h"
@@ -127,6 +128,18 @@ static void note_reported_state(uint8_t payload)
  */
 static void process_received(const ReceivedMsg &rm)
 {
+    /* Filtrage de la source : une fois le relais appairé, n'accepter
+     * que lui. Empêche qu'un tiers — ou le kit identique du van voisin,
+     * qui répond aussi aux diffusions de découverte — nous falsifie
+     * l'état du chauffage. Voir comm/peer_filter.h. */
+    if (!peer_source_accepted(has_relay_mac, relay_mac, rm.mac)) {
+        Serial.printf("[RELAY] Message ignore : source inattendue "
+                      "%02X:%02X:%02X:%02X:%02X:%02X\n",
+                      rm.mac[0], rm.mac[1], rm.mac[2],
+                      rm.mac[3], rm.mac[4], rm.mac[5]);
+        return;
+    }
+
     switch (rm.msg_type) {
         case ACK_PONG:
             note_reported_state(rm.payload);
@@ -136,7 +149,10 @@ static void process_received(const ReceivedMsg &rm)
                 has_relay_mac = true;
 
                 espnow_remove_peer(BROADCAST_MAC);
-                espnow_add_peer(relay_mac);
+                /* Appairage : à partir d'ici tout l'unicast est chiffré
+                 * (le relais bascule de son côté juste après nous avoir
+                 * répondu en clair — voir son processCommand). */
+                espnow_add_peer(relay_mac, /*encrypt=*/true);
 
                 storage_save_relay_mac(relay_mac);
 
@@ -205,7 +221,11 @@ static void update_discovery()
 
     if (has_relay_mac && discovery_unicast_tries < ESPNOW_MAX_RETRIES) {
         discovery_unicast_tries++;
-        espnow_add_peer(relay_mac);
+        /* MAC connue (NVS) : on retente directement en chiffré. Si le
+         * relais nous a oubliés, il ne pourra pas déchiffrer et ne
+         * répondra pas — les 3 échecs font retomber en diffusion claire
+         * ci-dessous, ce qui réappaire. */
+        espnow_add_peer(relay_mac, /*encrypt=*/true);
         espnow_send(relay_mac, msg);
         Serial.printf("[RELAY] Tentative unicast %d/%d\n",
                       discovery_unicast_tries, ESPNOW_MAX_RETRIES);
@@ -215,7 +235,9 @@ static void update_discovery()
             has_relay_mac = false;
             Serial.println("[RELAY] Unicast echoue, passage en broadcast");
         }
-        espnow_add_peer(BROADCAST_MAC);
+        /* La diffusion ne peut PAS être chiffrée (contrainte ESP-NOW) :
+         * c'est le canal de réappairage, volontairement en clair. */
+        espnow_add_peer(BROADCAST_MAC, /*encrypt=*/false);
         espnow_send(BROADCAST_MAC, msg);
     }
 }

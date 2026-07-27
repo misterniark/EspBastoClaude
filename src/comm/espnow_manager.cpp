@@ -130,6 +130,12 @@ void espnow_init()
         return;
     }
 
+    /* Clé primaire de chiffrement : elle protège les LMK des peers.
+     * Doit être identique côté relais (voir config.h). */
+    if (esp_now_set_pmk(ESPNOW_PMK) != ESP_OK) {
+        Serial.println("[ESPNOW] ATTENTION : echec configuration de la PMK");
+    }
+
     /* Enregistrer les callbacks */
     esp_now_register_recv_cb(on_data_recv);
     esp_now_register_send_cb(on_data_sent);
@@ -142,17 +148,26 @@ void espnow_set_recv_callback(espnow_recv_cb_t cb)
     user_recv_cb = cb;
 }
 
-bool espnow_add_peer(const uint8_t *mac_addr)
+bool espnow_add_peer(const uint8_t *mac_addr, bool encrypt)
 {
-    /* Vérifier si le peer existe déjà */
-    if (esp_now_is_peer_exist(mac_addr)) {
-        return true;
+    /* Peer déjà présent : ne le recréer que si le mode de chiffrement
+     * demandé diffère. C'est le passage clair → chiffré au moment de
+     * l'appairage (et l'inverse si l'on retombe en découverte). */
+    esp_now_peer_info_t existing = {};
+    if (esp_now_get_peer(mac_addr, &existing) == ESP_OK) {
+        if ((bool)existing.encrypt == encrypt) {
+            return true;
+        }
+        esp_now_del_peer(mac_addr);
     }
 
     esp_now_peer_info_t peer_info = {};
     memcpy(peer_info.peer_addr, mac_addr, MAC_ADDR_LEN);
     peer_info.channel = 0;    /* Canal auto */
-    peer_info.encrypt = false; /* Pas de chiffrement */
+    peer_info.encrypt = encrypt;
+    if (encrypt) {
+        memcpy(peer_info.lmk, ESPNOW_LMK, sizeof(peer_info.lmk));
+    }
 
     esp_err_t result = esp_now_add_peer(&peer_info);
     if (result != ESP_OK) {
@@ -160,7 +175,8 @@ bool espnow_add_peer(const uint8_t *mac_addr)
         return false;
     }
 
-    Serial.printf("[ESPNOW] Peer ajouté : %02X:%02X:%02X:%02X:%02X:%02X\n",
+    Serial.printf("[ESPNOW] Peer ajouté (%s) : %02X:%02X:%02X:%02X:%02X:%02X\n",
+                  encrypt ? "chiffre" : "clair",
                   mac_addr[0], mac_addr[1], mac_addr[2],
                   mac_addr[3], mac_addr[4], mac_addr[5]);
     return true;

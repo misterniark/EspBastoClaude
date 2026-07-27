@@ -317,6 +317,34 @@ constexpr unsigned long HEATER_LOCKED_FAILSAFE_MS = 210000; /* 3 min 30 */
 constexpr unsigned long RELAY_RECONCILE_GRACE_MS = 2000; /* 2 s */
 
 /* ==========================================
+ * Clés de chiffrement ESP-NOW
+ *
+ * ⚠️ CES DEUX CLÉS DOIVENT ÊTRE IDENTIQUES DANS LES DEUX FIRMWARES.
+ * La copie de référence côté relais est dans ESPBastoRelay/src/config.h.
+ * Après modification, reflasher LES DEUX cartes : des clés différentes
+ * = plus aucune communication (donc plus de chauffage pilotable).
+ *
+ * Pourquoi chiffrer : sans cela, n'importe quel ESP32 à portée peut
+ * commander le chauffage — le filtrage par MAC (comm/peer_filter.h)
+ * seul se contourne par usurpation d'adresse.
+ *
+ * Portée : le trafic unicast contrôleur ↔ relais. La découverte par
+ * diffusion reste en clair (ESP-NOW interdit le chiffrement en
+ * broadcast) ; elle ne transporte qu'un ping et l'état du relais.
+ *
+ * Ces valeurs sont celles d'un kit personnel : les changer pour toute
+ * nouvelle installation.
+ * ========================================== */
+constexpr uint8_t ESPNOW_PMK[16] = {
+    0x45, 0x53, 0x50, 0x42, 0x61, 0x73, 0x74, 0x6F,
+    0x2D, 0x50, 0x4D, 0x4B, 0x2D, 0x76, 0x31, 0x21
+};
+constexpr uint8_t ESPNOW_LMK[16] = {
+    0x57, 0x65, 0x62, 0x61, 0x73, 0x74, 0x6F, 0x2D,
+    0x4C, 0x4D, 0x4B, 0x2D, 0x76, 0x31, 0x21, 0x3F
+};
+
+/* ==========================================
  * Communication ESP-NOW
  * ========================================== */
 constexpr unsigned long ESPNOW_ACK_TIMEOUT_MS   = 1000;  /* Timeout ACK */
