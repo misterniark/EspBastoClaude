@@ -12,6 +12,7 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include <esp_arduino_version.h> /* ESP_ARDUINO_VERSION_* pour le shim ci-dessous */
 
 /* Adresse MAC broadcast pour la découverte */
 const uint8_t BROADCAST_MAC[MAC_ADDR_LEN] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -20,14 +21,11 @@ const uint8_t BROADCAST_MAC[MAC_ADDR_LEN] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 static espnow_recv_cb_t user_recv_cb = nullptr;
 
 /**
- * Callback interne appelé par ESP-NOW à chaque réception de message.
- * La signature utilise esp_now_recv_info (API IDF 5.x).
+ * Traitement commun d'un message reçu, indépendant de la version d'API.
  * Vérifie la taille du message et transmet au callback utilisateur.
  */
-static void on_data_recv(const esp_now_recv_info_t *recv_info, const uint8_t *data, int data_len)
+static void handle_recv(const uint8_t *mac_addr, const uint8_t *data, int data_len)
 {
-    const uint8_t *mac_addr = recv_info->src_addr;
-
     if (data_len != sizeof(EspNowMessage)) {
         Serial.printf("[ESPNOW] Message reçu de taille inattendue : %d octets\n", data_len);
         return;
@@ -46,10 +44,24 @@ static void on_data_recv(const esp_now_recv_info_t *recv_info, const uint8_t *da
     }
 }
 
-/**
- * Callback interne appelé par ESP-NOW après chaque tentative d'envoi.
- * La signature utilise wifi_tx_info_t (API IDF 5.x).
+/*
+ * Shim de compatibilité : la signature des callbacks ESP-NOW a changé
+ * entre les générations du core Arduino-ESP32 (le protocole radio, lui,
+ * est identique — les deux cartes peuvent utiliser des cores différents) :
+ *   - core 2.x (IDF 4.4) : adresse MAC source passée directement
+ *   - core 3.0 à 3.2     : réception via esp_now_recv_info_t
+ *   - core 3.3+          : idem + envoi via wifi_tx_info_t
  */
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+
+/** Réception (core 3.x) : l'adresse source est dans recv_info */
+static void on_data_recv(const esp_now_recv_info_t *recv_info, const uint8_t *data, int data_len)
+{
+    handle_recv(recv_info->src_addr, data, data_len);
+}
+
+#if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 3, 0)
+/** Confirmation d'envoi (core 3.3+) */
 static void on_data_sent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status)
 {
     (void)tx_info;
@@ -57,6 +69,35 @@ static void on_data_sent(const wifi_tx_info_t *tx_info, esp_now_send_status_t st
         Serial.println("[ESPNOW] Échec envoi");
     }
 }
+#else
+/** Confirmation d'envoi (core 3.0 à 3.2) */
+static void on_data_sent(const uint8_t *mac_addr, esp_now_send_status_t status)
+{
+    (void)mac_addr;
+    if (status != ESP_NOW_SEND_SUCCESS) {
+        Serial.println("[ESPNOW] Échec envoi");
+    }
+}
+#endif
+
+#else /* core 2.x (IDF 4.4) */
+
+/** Réception (core 2.x) : l'adresse source est passée directement */
+static void on_data_recv(const uint8_t *mac_addr, const uint8_t *data, int data_len)
+{
+    handle_recv(mac_addr, data, data_len);
+}
+
+/** Confirmation d'envoi (core 2.x) */
+static void on_data_sent(const uint8_t *mac_addr, esp_now_send_status_t status)
+{
+    (void)mac_addr;
+    if (status != ESP_NOW_SEND_SUCCESS) {
+        Serial.println("[ESPNOW] Échec envoi");
+    }
+}
+
+#endif /* ESP_ARDUINO_VERSION_MAJOR */
 
 void espnow_init()
 {
