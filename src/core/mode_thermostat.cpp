@@ -98,10 +98,11 @@ bool thermostat_start(float setpoint, int hysteresis)
 void thermostat_stop()
 {
     s_active = false;
-    /* I6 — Arrêter le chauffage si en cours (ne pas déléguer à l'appelant) */
-    if (heater_get_state() == HEATER_HEATING) {
-        heater_request_off();
-    }
+    /* I6 — Arrêter le chauffage (ne pas déléguer à l'appelant).
+     * Arrêt INCONDITIONNEL : si un ACK_ON s'est perdu, la FSM se croit
+     * IDLE alors que le relais chauffe — conditionner l'arrêt à l'état
+     * laisserait le Webasto allumé (voir heater_force_off). */
+    heater_force_off();
     Serial.println("[THERMOSTAT] Arret du mode thermostat");
 }
 

@@ -34,7 +34,10 @@ enum HeaterState {
 enum HeaterSafetyReason {
     HEATER_SAFETY_NONE,     /* Aucun arrêt de sécurité en attente d'acquittement */
     HEATER_SAFETY_SENSOR,   /* C1 — capteur en erreur critique (> 5 min) */
-    HEATER_SAFETY_OVERTEMP  /* C4 — température >= TEMP_SAFETY_MAX */
+    HEATER_SAFETY_OVERTEMP, /* C4 — température >= TEMP_SAFETY_MAX */
+    HEATER_SAFETY_DESYNC    /* Le relais s'est arrêté de lui-même (reboot,
+                             * watchdog) : chauffage éteint sans qu'on
+                             * l'ait demandé — l'utilisateur doit le savoir */
 };
 
 /**
@@ -66,6 +69,20 @@ bool heater_request_on();
  * @return true si la commande a pu être envoyée
  */
 bool heater_request_off();
+
+/**
+ * Ordonne l'arrêt SANS condition sur l'état de la machine à états.
+ *
+ * À utiliser dans tous les chemins d'arrêt des modes. heater_request_off()
+ * refuse d'agir hors de l'état HEATING : si un ACK_ON s'est perdu, la FSM
+ * se croit IDLE alors que le relais chauffe, et l'arrêt de fin de minuteur
+ * ou d'atteinte de consigne ne serait JAMAIS envoyé — chauffage sans borne,
+ * sécurités C1/C4 inertes (elles ne tournent qu'en HEATING).
+ * Le relais traite un arrêt redondant sans effet de bord.
+ *
+ * @return true si la commande a pu être envoyée (relais connecté)
+ */
+bool heater_force_off();
 
 /** Retourne l'état actuel de la machine d'état. */
 HeaterState heater_get_state();

@@ -38,6 +38,7 @@ enum AlertKind {
     ALERT_NONE = 0,        /* Rien à afficher ce cycle */
     ALERT_SAFETY_SENSOR,   /* C1 — capteur HS : chauffage coupé par sécurité */
     ALERT_SAFETY_OVERTEMP, /* C4 — température max : chauffage coupé */
+    ALERT_SAFETY_DESYNC,   /* Le relais s'est arrêté seul (reboot, watchdog) */
     ALERT_CONNECTION,      /* I5 — connexion relais perdue pendant la chauffe */
     ALERT_SENSOR_STATE     /* État : capteur en erreur critique (infos câblage) */
 };
@@ -63,6 +64,8 @@ struct AlertPolicyState {
  * @param st              État persistant de la politique
  * @param safety_sensor   Drapeau C1 levé (arrêt sécurité capteur, acquittable)
  * @param safety_overtemp Drapeau C4 levé (arrêt sécurité température, acquittable)
+ * @param safety_desync   Drapeau désynchronisation levé (le relais s'est
+ *                        arrêté seul, acquittable)
  * @param connection      Drapeau I5 levé (connexion perdue, acquittable)
  * @param sensor_critical État : capteur en erreur critique (> 5 min)
  * @return L'alerte à afficher MAINTENANT, ou ALERT_NONE s'il n'y a
@@ -71,6 +74,7 @@ struct AlertPolicyState {
 static inline AlertKind alert_policy_step(AlertPolicyState &st,
                                           bool safety_sensor,
                                           bool safety_overtemp,
+                                          bool safety_desync,
                                           bool connection,
                                           bool sensor_critical)
 {
@@ -91,6 +95,8 @@ static inline AlertKind alert_policy_step(AlertPolicyState &st,
         due = ALERT_SAFETY_SENSOR;
     } else if (safety_overtemp) {
         due = ALERT_SAFETY_OVERTEMP;
+    } else if (safety_desync) {
+        due = ALERT_SAFETY_DESYNC;
     } else if (connection) {
         due = ALERT_CONNECTION;
     } else if (sensor_critical && !st.sensor_info_seen) {

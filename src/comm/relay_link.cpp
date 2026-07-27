@@ -11,6 +11,7 @@
 #include "espnow_manager.h"
 #include "protocol.h"
 #include "../core/storage.h"
+#include "../core/relay_reconcile.h"
 #include "../config.h"
 #include <Arduino.h>
 #include <cstring>
@@ -31,6 +32,7 @@ enum RelayLinkState {
 typedef struct {
     uint8_t mac[MAC_ADDR_LEN];
     uint8_t msg_type;
+    uint8_t payload;   /* État du relais dans ACK_PONG (ou ABSENT) */
 } ReceivedMsg;
 
 /* ==========================================
@@ -51,6 +53,35 @@ static int           ping_fail_count = 0;
 static bool          ping_pending = false;
 static unsigned long ping_sent_ms = 0;
 
+/* ==========================================
+ * Réconciliation d'état (voir core/relay_reconcile.h)
+ * ========================================== */
+
+/* Dernier état rapporté par le relais, et son horodatage. Remis à
+ * UNKNOWN à chaque commande envoyée : un rapport décrivant l'état
+ * d'AVANT notre ordre ne doit jamais servir à le défaire. */
+static RelayReport   reported_state    = RELAY_REPORT_UNKNOWN;
+static unsigned long last_cmd_ms       = 0;
+
+/* Mise en sécurité au boot : tant que ce drapeau est armé, la première
+ * connexion établie déclenche un CMD_HEAT_OFF inconditionnel. Couvre le
+ * cas où le contrôleur a redémarré pendant une chauffe : le relais est
+ * peut-être encore fermé, et rien d'autre ne le couperait puisque nos
+ * pings satisfont son watchdog. */
+static bool boot_safety_pending = true;
+
+/* ==========================================
+ * Retry applicatif du CMD_HEAT_OFF
+ *
+ * Seul l'ARRÊT est réémis : c'est le sens critique pour la sécurité.
+ * Un allumage perdu est rattrapé naturellement (le thermostat
+ * redemande à chaque lecture), un arrêt perdu laisserait le Webasto
+ * tourner sans surveillance.
+ * ========================================== */
+static bool          off_ack_pending = false;
+static unsigned long off_sent_ms     = 0;
+static int           off_retries     = 0;
+
 /* Queue FreeRTOS pour recevoir les messages du callback WiFi */
 static QueueHandle_t recv_queue = NULL;
 constexpr int RECV_QUEUE_SIZE = 8;
@@ -66,8 +97,29 @@ static void on_message_received(const uint8_t *mac_addr, const EspNowMessage &ms
     ReceivedMsg rm;
     memcpy(rm.mac, mac_addr, MAC_ADDR_LEN);
     rm.msg_type = msg.type;
+    rm.payload  = msg.payload;
 
     xQueueSend(recv_queue, &rm, 0);
+}
+
+/**
+ * Enregistre l'état rapporté par un ACK_PONG, s'il est exploitable.
+ *
+ * Deux raisons de l'ignorer : le relais n'a pas envoyé l'octet d'état
+ * (firmware antérieur), ou le rapport est trop proche de notre dernière
+ * commande pour être postérieur à son traitement (voir
+ * relay_report_usable).
+ */
+static void note_reported_state(uint8_t payload)
+{
+    if (payload != RELAY_PAYLOAD_OFF && payload != RELAY_PAYLOAD_ON) {
+        return; /* Relais legacy : pas d'état dans le PONG */
+    }
+    if (!relay_report_usable(millis(), last_cmd_ms, RELAY_RECONCILE_GRACE_MS)) {
+        return; /* Rapport potentiellement antérieur à notre commande */
+    }
+    reported_state = (payload == RELAY_PAYLOAD_ON) ? RELAY_REPORT_ON
+                                                   : RELAY_REPORT_OFF;
 }
 
 /**
@@ -77,6 +129,7 @@ static void process_received(const ReceivedMsg &rm)
 {
     switch (rm.msg_type) {
         case ACK_PONG:
+            note_reported_state(rm.payload);
             if (state == RL_DISCOVERING) {
                 /* Sauvegarder la MAC du relais */
                 memcpy(relay_mac, rm.mac, MAC_ADDR_LEN);
@@ -94,6 +147,19 @@ static void process_received(const ReceivedMsg &rm)
                 Serial.printf("[RELAY] Relais decouvert : %02X:%02X:%02X:%02X:%02X:%02X\n",
                               relay_mac[0], relay_mac[1], relay_mac[2],
                               relay_mac[3], relay_mac[4], relay_mac[5]);
+
+                /* Mise en sécurité au boot : ce contrôleur vient de
+                 * démarrer et ignore tout de ce qui se passait avant.
+                 * Si le relais est resté fermé (reboot pendant une
+                 * chauffe), personne ne le couperait — nos pings
+                 * satisfont son watchdog. On ordonne donc l'arrêt une
+                 * fois, sans condition. Sans effet s'il est déjà
+                 * ouvert (le relais traite l'arrêt redondant). */
+                if (boot_safety_pending) {
+                    boot_safety_pending = false;
+                    Serial.println("[RELAY] Mise en securite au demarrage : HEAT_OFF");
+                    relay_send_heat_off();
+                }
             } else {
                 ping_fail_count = 0;
                 ping_pending = false;
@@ -101,13 +167,25 @@ static void process_received(const ReceivedMsg &rm)
             break;
 
         case ACK_ON:
+            /* Confirmation directe : plus fiable et plus fraîche qu'un
+             * futur PONG, on met l'état rapporté à jour tout de suite. */
+            reported_state = RELAY_REPORT_ON;
+            if (event_cb) event_cb(rm.msg_type);
+            break;
+
         case ACK_OFF:
         case ACK_LOCKED:
+            /* Le relais confirme qu'il est ouvert (ACK_OFF) ou qu'il
+             * refuse d'allumer (ACK_LOCKED) : dans les deux cas le
+             * chauffage est éteint, et notre demande d'arrêt — s'il y
+             * en avait une en attente — a bien été reçue. */
+            reported_state  = RELAY_REPORT_OFF;
+            off_ack_pending = false;
+            if (event_cb) event_cb(rm.msg_type);
+            break;
+
         case ACK_UNLOCKED:
-            /* Transmettre à heater_fsm (via sa propre queue) */
-            if (event_cb) {
-                event_cb(rm.msg_type);
-            }
+            if (event_cb) event_cb(rm.msg_type);
             break;
 
         default:
@@ -142,10 +220,39 @@ static void update_discovery()
     }
 }
 
+/**
+ * Réémet le CMD_HEAT_OFF resté sans confirmation.
+ * Voir la déclaration de off_ack_pending : seul l'arrêt est réémis.
+ */
+static void update_off_retry()
+{
+    if (!off_ack_pending) return;
+    if (millis() - off_sent_ms < ESPNOW_ACK_TIMEOUT_MS) return;
+
+    if (off_retries >= ESPNOW_MAX_RETRIES) {
+        /* Abandon : ne pas boucler indéfiniment. La réconciliation par
+         * PONG reprendra le relais si le chauffage est resté allumé. */
+        off_ack_pending = false;
+        Serial.printf("[RELAY] HEAT_OFF sans confirmation apres %d tentatives\n",
+                      ESPNOW_MAX_RETRIES);
+        return;
+    }
+
+    off_retries++;
+    off_sent_ms = millis();
+    last_cmd_ms = millis();
+    Serial.printf("[RELAY] HEAT_OFF sans ACK, reemission %d/%d\n",
+                  off_retries, ESPNOW_MAX_RETRIES);
+    EspNowMessage msg = { CMD_HEAT_OFF, 0 };
+    espnow_send(relay_mac, msg);
+}
+
 /** Gère le ping périodique et la détection de perte de connexion. */
 static void update_connected()
 {
     unsigned long now = millis();
+
+    update_off_retry();
 
     /* Vérifier le timeout du ping en attente */
     if (ping_pending && (now - ping_sent_ms > ESPNOW_ACK_TIMEOUT_MS)) {
@@ -196,6 +303,12 @@ void relay_link_init()
     state = RL_DISCOVERING;
     discovery_unicast_tries = 0;
     last_discovery_ms = 0;
+
+    /* Ce contrôleur vient de démarrer : il ignore si le relais est
+     * resté fermé. La première connexion déclenchera un HEAT_OFF. */
+    boot_safety_pending = true;
+    reported_state      = RELAY_REPORT_UNKNOWN;
+    off_ack_pending     = false;
 }
 
 void relay_link_update()
@@ -222,18 +335,45 @@ void relay_link_set_event_callback(relay_event_cb_t cb)
     event_cb = cb;
 }
 
+/**
+ * Marque l'envoi d'une commande : l'état rapporté devient inconnu
+ * jusqu'au prochain rapport POSTÉRIEUR à cette commande. Sans cela, un
+ * PONG parti avant que le relais ne traite notre ordre décrirait un
+ * état périmé et la réconciliation déferait l'ordre qu'on vient de
+ * donner (allumage annulé dans la seconde, par exemple).
+ */
+static void note_command_sent()
+{
+    last_cmd_ms    = millis();
+    reported_state = RELAY_REPORT_UNKNOWN;
+}
+
 bool relay_send_heat_on()
 {
     if (state != RL_CONNECTED) return false;
-    EspNowMessage msg = { CMD_HEAT_ON };
+    note_command_sent();
+    EspNowMessage msg = { CMD_HEAT_ON, 0 };
     return espnow_send(relay_mac, msg);
 }
 
 bool relay_send_heat_off()
 {
     if (state != RL_CONNECTED) return false;
-    EspNowMessage msg = { CMD_HEAT_OFF };
+    note_command_sent();
+
+    /* Armer le retry applicatif : un arrêt perdu laisserait le Webasto
+     * tourner sans surveillance, on ne s'en remet pas au seul ESP-NOW. */
+    off_ack_pending = true;
+    off_sent_ms     = millis();
+    off_retries     = 0;
+
+    EspNowMessage msg = { CMD_HEAT_OFF, 0 };
     return espnow_send(relay_mac, msg);
+}
+
+RelayReport relay_get_reported_state()
+{
+    return reported_state;
 }
 
 bool relay_is_connected()

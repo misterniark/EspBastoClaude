@@ -14,6 +14,7 @@
  */
 
 #include "heater_fsm.h"
+#include "relay_reconcile.h"
 #include "../comm/relay_link.h"
 #include "../comm/protocol.h"
 #include "../hal/sensor.h"
@@ -150,6 +151,46 @@ void heater_fsm_update()
     }
 
     /* ===================================================
+     * 1ter. RÉCONCILIATION avec l'état réel du relais.
+     *
+     * Le relais rapporte son état dans chaque ACK_PONG : on s'aligne
+     * sur la réalité au lieu de faire confiance à notre seule mémoire.
+     * C'est ce qui rattrape un reboot de l'un ou l'autre appareil et
+     * les ACK perdus (voir core/relay_reconcile.h pour les scénarios).
+     * Placé AVANT les vérifications de sécurité pour qu'un état corrigé
+     * soit pris en compte dès ce cycle.
+     * =================================================== */
+    switch (relay_reconcile_step(current_state == HEATER_HEATING,
+                                 relay_get_reported_state())) {
+        case RECONCILE_ADOPT_OFF:
+            /* Le relais s'est arrêté sans qu'on le demande (son
+             * watchdog, un reboot, un arrêt manuel au bouton). Adopter
+             * la réalité et prévenir : l'utilisateur croit avoir du
+             * chauffage. Retour en IDLE (et non LOCKED) — le relais est
+             * ouvert depuis un moment, son verrou a couru en même temps. */
+            current_state = HEATER_IDLE;
+            safety_reason = HEATER_SAFETY_DESYNC;
+            Serial.println("[HEATER] DESYNC : le relais est eteint alors que "
+                           "nous chauffions -> IDLE + alerte");
+            break;
+
+        case RECONCILE_SEND_OFF:
+            /* Le relais chauffe alors qu'aucune chauffe n'est en cours
+             * de notre côté : typiquement notre propre reboot pendant
+             * une chauffe. Ne JAMAIS laisser tourner un appareil à
+             * combustion que nous ne régulons pas (nos pings satisfont
+             * son watchdog : rien d'autre ne le couperait). */
+            Serial.println("[HEATER] DESYNC : le relais chauffe hors de notre "
+                           "controle -> arret force");
+            heater_force_off();
+            break;
+
+        case RECONCILE_NONE:
+        default:
+            break;
+    }
+
+    /* ===================================================
      * 2. Vérifications de sécurité (uniquement si HEATING)
      * =================================================== */
     if (current_state != HEATER_HEATING) return;
@@ -212,6 +253,19 @@ bool heater_request_off()
     }
 
     Serial.println("[HEATER] Envoi HEAT_OFF...");
+    return relay_send_heat_off();
+}
+
+bool heater_force_off()
+{
+    /* Aucune condition sur current_state : c'est tout l'intérêt.
+     * Voir heater_fsm.h pour le scénario de l'ACK_ON perdu. */
+    if (!relay_is_connected()) {
+        Serial.println("[HEATER] force_off impossible (relais non connecte)");
+        return false;
+    }
+
+    Serial.println("[HEATER] Envoi HEAT_OFF (inconditionnel)...");
     return relay_send_heat_off();
 }
 

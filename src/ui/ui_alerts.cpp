@@ -31,6 +31,7 @@ void ui_alerts_update()
     AlertKind show = alert_policy_step(policy_state,
                                        reason == HEATER_SAFETY_SENSOR,
                                        reason == HEATER_SAFETY_OVERTEMP,
+                                       reason == HEATER_SAFETY_DESYNC,
                                        heater_has_connection_alert(),
                                        sensor_is_critical_error());
 
@@ -49,6 +50,7 @@ void ui_alerts_update()
     switch (show) {
         case ALERT_SAFETY_SENSOR:   scr_alert_safety_sensor();   break;
         case ALERT_SAFETY_OVERTEMP: scr_alert_safety_overtemp(); break;
+        case ALERT_SAFETY_DESYNC:   scr_alert_desync();          break;
         case ALERT_CONNECTION:      scr_alert_connection_lost(); break;
         case ALERT_SENSOR_STATE:    scr_alert_sensor_error();    break;
         default: break;

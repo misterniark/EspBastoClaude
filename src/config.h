@@ -309,6 +309,13 @@ constexpr int TIMER_MIN_STEP = 1;
  * verrou nominal du relais (3 min) pour ne jamais le court-circuiter. */
 constexpr unsigned long HEATER_LOCKED_FAILSAFE_MS = 210000; /* 3 min 30 */
 
+/* Marge après l'envoi d'une commande pendant laquelle un état rapporté
+ * par le relais est ignoré : il pourrait décrire la situation d'AVANT
+ * le traitement de notre ordre (PONG déjà en vol). Large devant un
+ * aller-retour ESP-NOW (quelques ms), négligeable devant l'intervalle
+ * de ping (60 s). Voir core/relay_reconcile.h. */
+constexpr unsigned long RELAY_RECONCILE_GRACE_MS = 2000; /* 2 s */
+
 /* ==========================================
  * Communication ESP-NOW
  * ========================================== */

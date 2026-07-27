@@ -33,10 +33,39 @@ enum Response : uint8_t {
 };
 
 /* ==========================================
- * Structure du message ESP-NOW (1 octet)
+ * Charge utile (2e octet), portée par ACK_PONG
+ *
+ * Le PONG transporte l'état RÉEL du relais : c'est le mécanisme de
+ * resynchronisation du système. Sans lui, un reboot de l'un des deux
+ * appareils (microcoupure 12 V, banal en van) ou un simple ACK perdu
+ * laissait le contrôleur afficher un état faux INDÉFINIMENT — chauffage
+ * éteint alors qu'il se croit en chauffe, ou pire, Webasto allumé sans
+ * régulation alors qu'il se croit à l'arrêt.
+ * Ignoré pour les autres codes de réponse.
+ * ========================================== */
+enum RelayStatePayload : uint8_t {
+    RELAY_PAYLOAD_OFF = 0,  /* Relais ouvert (chauffage éteint) */
+    RELAY_PAYLOAD_ON  = 1   /* Relais fermé (chauffage allumé) */
+};
+
+/* ==========================================
+ * Structure du message ESP-NOW (2 octets)
+ *
+ * La réception tolère 1 ou 2 octets : un relais non encore mis à jour
+ * n'envoie que le code, l'état est alors simplement inconnu (aucune
+ * réconciliation, comportement d'avant).
  * ========================================== */
 typedef struct {
     uint8_t type;       /* Code commande ou réponse */
+    uint8_t payload;    /* Charge utile (état relais dans ACK_PONG) */
 } __attribute__((packed)) EspNowMessage;
+
+/** Taille minimale acceptée en réception (message legacy 1 octet). */
+constexpr int ESPNOW_MSG_MIN_LEN = 1;
+
+/** Valeur substituée à la charge utile quand le message reçu n'en
+ *  comporte pas (relais legacy) : distincte de OFF et de ON, pour ne
+ *  jamais confondre « absent » avec « éteint ». */
+constexpr uint8_t ESPNOW_PAYLOAD_ABSENT = 0xFF;
 
 #endif /* COMM_PROTOCOL_H */

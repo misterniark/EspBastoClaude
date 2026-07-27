@@ -15,6 +15,7 @@
 
 #include "mode_timer.h"
 #include "heater_fsm.h"
+#include "timer_safety.h"
 #include "../hal/sensor.h"
 #include "../config.h"
 #include <Arduino.h>
@@ -24,6 +25,9 @@ static bool s_running = false;
 static int s_duration_min = DEFAULT_TIMER_MIN;
 static unsigned long s_start_ms = 0;
 static unsigned long s_duration_ms = 0;
+
+/* Détection de front des arrêts de sécurité (voir timer_safety.h) */
+static TimerSafetyGate s_safety_gate;
 
 void timer_mode_start(int duration_min)
 {
@@ -42,6 +46,11 @@ void timer_mode_start(int duration_min)
 
     s_start_ms = millis();
     s_running  = true;
+
+    /* Ignorer une alerte de sécurité antérieure non encore acquittée :
+     * elle concerne un épisode passé, pas ce décompte (voir
+     * timer_safety.h — sans cela le minuteur s'arrêtait aussitôt). */
+    timer_safety_arm(s_safety_gate, heater_get_safety_alert_reason());
 }
 
 void timer_mode_stop()
@@ -50,10 +59,9 @@ void timer_mode_stop()
         s_running = false;
         Serial.println("[TIMER] Arret manuel");
 
-        /* I6 — Arrêter le chauffage si en cours */
-        if (heater_get_state() == HEATER_HEATING) {
-            heater_request_off();
-        }
+        /* I6 — Arrêter le chauffage, INCONDITIONNELLEMENT
+         * (voir heater_force_off : cas de l'ACK_ON perdu) */
+        heater_force_off();
     }
 }
 
@@ -63,16 +71,23 @@ void timer_mode_update()
 
     /*
      * Garde de securite C4bis (pendant du C1bis des modes A/C) : si un
-     * arret de securite (C1 capteur mort ou C4 temperature max) a coupe
-     * le chauffage pendant le decompte, arreter aussi le minuteur.
-     * Sans cette garde, le decompte continuerait de s'afficher alors
-     * que le chauffage est coupe et ne redemarrera jamais (le minuteur
-     * ne rallume jamais en cours de route). Pas de heater_request_off()
-     * ici : heater_fsm a deja coupe (etat IDLE).
+     * arret de securite (capteur mort, temperature max, ou relais
+     * arrete de lui-meme) a coupe le chauffage PENDANT le decompte,
+     * arreter aussi le minuteur. Sans cette garde, le decompte
+     * continuerait de s'afficher alors que le chauffage est coupe et ne
+     * redemarrera jamais (le minuteur ne rallume jamais en cours de
+     * route).
+     *
+     * Detection de FRONT (timer_safety.h) : une alerte anterieure non
+     * acquittee ne doit pas tuer un decompte qui vient de demarrer.
      */
-    if (heater_has_sensor_safety_alert()) {
+    if (timer_safety_triggered(s_safety_gate, heater_get_safety_alert_reason())) {
         s_running = false;
         Serial.println("[TIMER] Arret de securite du chauffage -> arret du minuteur");
+        /* heater_fsm a normalement deja coupe, mais ne pas en dependre :
+         * un arret redondant est sans effet cote relais, alors qu'un
+         * chauffage laisse allume sans minuteur n'a plus aucune borne. */
+        heater_force_off();
         return;
     }
 
@@ -84,9 +99,10 @@ void timer_mode_update()
         s_running = false;
         Serial.println("[TIMER] Decompte termine — arret du chauffage");
 
-        if (heater_get_state() == HEATER_HEATING) {
-            heater_request_off();
-        }
+        /* Arrêt INCONDITIONNEL : c'est LA borne de ce mode. Si un
+         * ACK_ON perdu a laissé la FSM en IDLE, ne pas envoyer l'arrêt
+         * ici laisserait le Webasto tourner sans aucune limite. */
+        heater_force_off();
     }
 }
 

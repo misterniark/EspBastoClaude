@@ -26,13 +26,21 @@ static espnow_recv_cb_t user_recv_cb = nullptr;
  */
 static void handle_recv(const uint8_t *mac_addr, const uint8_t *data, int data_len)
 {
-    if (data_len != sizeof(EspNowMessage)) {
+    /* Tolérance de taille : 2 octets (protocole courant, avec l'octet
+     * d'état du relais) ou 1 octet (relais non encore mis à jour —
+     * l'état est alors simplement inconnu, pas de réconciliation). */
+    if (data_len < ESPNOW_MSG_MIN_LEN || data_len > (int)sizeof(EspNowMessage)) {
         Serial.printf("[ESPNOW] Message reçu de taille inattendue : %d octets\n", data_len);
         return;
     }
 
-    EspNowMessage msg;
-    memcpy(&msg, data, sizeof(EspNowMessage));
+    EspNowMessage msg = { 0, 0 };
+    memcpy(&msg, data, data_len);
+    /* Marqueur « pas de charge utile » pour un message legacy 1 octet */
+    bool has_payload = (data_len >= (int)sizeof(EspNowMessage));
+    if (!has_payload) {
+        msg.payload = ESPNOW_PAYLOAD_ABSENT;
+    }
 
     Serial.printf("[ESPNOW] Message reçu : type=%d depuis %02X:%02X:%02X:%02X:%02X:%02X\n",
                   msg.type,

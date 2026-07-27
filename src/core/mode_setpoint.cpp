@@ -108,10 +108,8 @@ void setpoint_mode_stop()
 
         Serial.println("[SETPOINT] Arret du mode consigne");
 
-        /* Eteindre le chauffage si en chauffe */
-        if (heater_get_state() == HEATER_HEATING) {
-            heater_request_off();
-        }
+        /* Arrêt INCONDITIONNEL (voir heater_force_off) */
+        heater_force_off();
     }
 }
 
@@ -184,10 +182,11 @@ void setpoint_mode_update()
                        + "°C, cible=" + String(s_target, 1)
                        + "°C → arret definitif");
 
-        /* Eteindre le chauffage uniquement si en chauffe */
-        if (heater_get_state() == HEATER_HEATING) {
-            heater_request_off();
-        }
+        /* Arrêt INCONDITIONNEL : la coupure du mode consigne est
+         * DÉFINITIVE (aucune reprise automatique) — si elle n'était pas
+         * envoyée à cause d'un ACK_ON perdu, plus rien n'arrêterait le
+         * chauffage. Voir heater_force_off. */
+        heater_force_off();
     }
     /* Si temp < cible, on ne fait rien : le chauffage reste allume */
 }

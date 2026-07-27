@@ -201,6 +201,22 @@ void scr_alert_safety_sensor()
     );
 }
 
+void scr_alert_desync()
+{
+    /* Pas de « relancer » dans le message : si un mode est encore actif,
+     * il redemande l'allumage tout seul au cycle suivant (reprise
+     * automatique constatée au banc). Le message doit rester vrai dans
+     * les deux cas — l'information utile est que le relais s'est coupé
+     * seul, signe d'un souci d'alimentation ou de liaison à surveiller. */
+    create_alert_screen(
+        "CHAUFFAGE INTERROMPU",
+        "Le relais s'est coupe",
+        "de lui-meme (redemarrage",
+        "ou securite).",
+        heater_clear_sensor_safety_alert
+    );
+}
+
 void scr_alert_safety_overtemp()
 {
     /* Inclure le seuil configuré (TEMP_SAFETY_MAX) dans le message.

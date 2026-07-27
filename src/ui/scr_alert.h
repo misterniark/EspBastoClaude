@@ -50,4 +50,13 @@ void scr_alert_safety_sensor();
  */
 void scr_alert_safety_overtemp();
 
+/**
+ * Affiche l'alerte de désynchronisation : le relais s'est arrêté de
+ * lui-même (reboot, watchdog, arrêt manuel) alors que le contrôleur
+ * chauffait. Le chauffage est éteint sans que l'utilisateur l'ait
+ * demandé — il doit le savoir.
+ * OK acquitte heater_clear_sensor_safety_alert().
+ */
+void scr_alert_desync();
+
 #endif /* UI_SCR_ALERT_H */
