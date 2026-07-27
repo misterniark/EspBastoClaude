@@ -66,6 +66,31 @@ static int local_duration_min = DEFAULT_TIMER_MIN;
 /** Timer LVGL de mise à jour périodique (1000ms) */
 static lv_timer_t *update_timer = NULL;
 
+/* Sauvegarde NVS différée, comme les écrans thermostat et consigne.
+ * Sans elle, chaque appui sur +/- écrivait en flash : régler la durée
+ * de 30 à 120 minutes provoquait 90 écritures pour un seul réglage. */
+static lv_timer_t *save_timer = NULL;
+static void schedule_deferred_save();
+static void save_timer_cb(lv_timer_t *timer);
+
+/**
+ * Supprime les timers de cet écran. Le timer de sauvegarde est
+ * FLUSHÉ (écriture immédiate) plutôt que perdu : l'utilisateur a
+ * réglé une durée, elle doit survivre à son départ de l'écran.
+ */
+static void cleanup_timer_screen()
+{
+    if (update_timer) {
+        lv_timer_del(update_timer);
+        update_timer = NULL;
+    }
+    if (save_timer) {
+        lv_timer_del(save_timer);
+        save_timer = NULL;
+        storage_save_timer_min(local_duration_min);
+    }
+}
+
 /* ==========================================
  * Prototypes des fonctions internes
  * ========================================== */
@@ -92,10 +117,7 @@ static void on_screen_delete(lv_event_t *e)
 {
     if (lv_event_get_target(e) != scr) return;
     scr = NULL;
-    if (update_timer) {
-        lv_timer_del(update_timer);
-        update_timer = NULL;
-    }
+    cleanup_timer_screen();
 }
 
 /* ==========================================
@@ -108,10 +130,7 @@ static void on_screen_delete(lv_event_t *e)
 static void cb_back(lv_event_t *e)
 {
     (void)e;
-    if (update_timer) {
-        lv_timer_del(update_timer);
-        update_timer = NULL;
-    }
+    cleanup_timer_screen();
     scr_menu_create();
 }
 
@@ -142,7 +161,7 @@ static void cb_duration_minus(lv_event_t *e)
         if (local_duration_min < TIMER_MIN_MIN) local_duration_min = TIMER_MIN_MIN;
         timer_mode_set_duration_min(local_duration_min);
         refresh_duration_label();
-        storage_save_timer_min(local_duration_min);
+        schedule_deferred_save();
     }
 }
 
@@ -157,13 +176,37 @@ static void cb_duration_plus(lv_event_t *e)
         if (local_duration_min > TIMER_MIN_MAX) local_duration_min = TIMER_MIN_MAX;
         timer_mode_set_duration_min(local_duration_min);
         refresh_duration_label();
-        storage_save_timer_min(local_duration_min);
+        schedule_deferred_save();
     }
 }
 
 /* ==========================================
  * Fonctions utilitaires internes
  * ========================================== */
+
+/**
+ * Programme (ou reprogramme) la sauvegarde différée : l'écriture NVS a
+ * lieu 5 secondes après le DERNIER appui sur +/-, au lieu d'une
+ * écriture flash par appui. Même mécanisme que les écrans thermostat
+ * et consigne.
+ */
+static void schedule_deferred_save()
+{
+    if (save_timer) {
+        lv_timer_reset(save_timer);
+    } else {
+        save_timer = lv_timer_create(save_timer_cb, 5000, NULL);
+        lv_timer_set_repeat_count(save_timer, 1);
+    }
+}
+
+/** Callback du timer de sauvegarde différée. */
+static void save_timer_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    storage_save_timer_min(local_duration_min);
+    save_timer = NULL;
+}
 
 /**
  * Met à jour le label de la durée avec la valeur locale.
@@ -285,6 +328,12 @@ static void update_timer_cb(lv_timer_t *timer)
 
 void scr_timer_create()
 {
+    /* Nettoyer une instance précédente encore vivante (double appui
+     * pendant le fondu de chargement) : sans cela ses timers deviennent
+     * orphelins dès que les pointeurs statiques sont écrasés ci-dessous.
+     * Voir le commentaire détaillé dans scr_thermostat_create(). */
+    cleanup_timer_screen();
+
     /* --- Charger la durée sauvegardée --- */
     local_duration_min = storage_load_timer_min();
 

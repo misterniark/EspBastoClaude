@@ -115,11 +115,22 @@ static void update_cb(lv_timer_t *t)
     }
 }
 
+/**
+ * Supprime les timers de cet écran, en flushant la sauvegarde différée
+ * (un réglage ne doit pas être perdu). Appelé au départ de l'écran, à
+ * sa destruction, et en tête de sa création — voir le commentaire
+ * détaillé de scr_thermostat_create() sur les doubles appuis.
+ */
+static void cleanup_setpoint()
+{
+    if (update_timer) { lv_timer_del(update_timer); update_timer = nullptr; }
+    if (save_timer) { save_cb(nullptr); }
+}
+
 static void on_back(lv_event_t *e)
 {
     (void)e;
-    if (update_timer) { lv_timer_del(update_timer); update_timer = nullptr; }
-    if (save_timer) { save_cb(nullptr); }
+    cleanup_setpoint();
     scr_menu_create();
 }
 
@@ -137,8 +148,7 @@ static void on_screen_delete(lv_event_t *e)
 {
     if (lv_event_get_target(e) != scr) return;
     scr = nullptr;
-    if (update_timer) { lv_timer_del(update_timer); update_timer = nullptr; }
-    if (save_timer) { save_cb(nullptr); }
+    cleanup_setpoint();
 }
 
 static void on_action(lv_event_t *e)
@@ -180,6 +190,10 @@ static void on_plus(lv_event_t *e)
 
 void scr_setpoint_create()
 {
+    /* Nettoyer une instance précédente encore vivante (double appui
+     * pendant le fondu de chargement) — voir scr_thermostat_create(). */
+    cleanup_setpoint();
+
     scr = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(scr, cl_bg, 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);

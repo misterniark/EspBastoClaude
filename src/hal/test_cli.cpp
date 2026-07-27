@@ -19,6 +19,11 @@
 #include "../core/mode_setpoint.h"
 #include "../core/mode_timer.h"
 #include "../comm/relay_link.h"
+#include "../ui/scr_menu.h"
+#include "../ui/scr_thermostat.h"
+#include "../ui/scr_timer.h"
+#include "../ui/scr_setpoint.h"
+#include <lvgl.h>
 #include <Arduino.h>
 
 /* Tampon d'assemblage de la ligne en cours (une commande par ligne) */
@@ -124,6 +129,51 @@ static void execute_line(const char *line)
         case TCLI_STATUS:
             print_status();
             break;
+
+        case TCLI_MEM: {
+            /* NOMBRE DE TIMERS LVGL VIVANTS : c'est la métrique qui
+             * détecte les fuites de cycle de vie des écrans. Le tas
+             * seul ne convient pas — sa variation normale (objets
+             * d'écran, fragmentation) dépasse largement la taille d'un
+             * timer orphelin, et masquerait donc la fuite.
+             * Un timer orphelin ne se contente pas d'occuper la
+             * mémoire : son callback continue de s'exécuter à vie. */
+            int timers = 0;
+            for (lv_timer_t *t = lv_timer_get_next(NULL); t != NULL;
+                 t = lv_timer_get_next(t)) {
+                timers++;
+            }
+
+            lv_mem_monitor_t mon;
+            lv_mem_monitor(&mon);
+            Serial.printf("[TCLI] mem: timers=%d lv_libre=%u lv_frag=%u%% heap=%u\n",
+                          timers, (unsigned)mon.free_size,
+                          (unsigned)mon.frag_pct, (unsigned)ESP.getFreeHeap());
+            break;
+        }
+
+        case TCLI_SCREEN:
+        case TCLI_SCREENDUP: {
+            /* screendup : DEUX créations dos à dos, sans repasser par
+             * lv_timer_handler entre les deux. C'est la reproduction
+             * fidèle du double appui pendant le fondu de chargement —
+             * espacer les deux appels laisserait LVGL détruire la
+             * première instance, et il n'y aurait plus rien à tester. */
+            int repeats = (cmd.type == TCLI_SCREENDUP) ? 2 : 1;
+            for (int i = 0; i < repeats; i++) {
+                switch ((int)cmd.a) {
+                    case 0: scr_menu_create();       break;
+                    case 1: scr_thermostat_create(); break;
+                    case 2: scr_timer_create();      break;
+                    case 3: scr_setpoint_create();   break;
+                    default:
+                        Serial.println("[TCLI] ERREUR ecran inconnu (0-3)");
+                        return;
+                }
+            }
+            Serial.printf("[TCLI] ecran %d cree x%d\n", (int)cmd.a, repeats);
+            break;
+        }
 
         case TCLI_ERROR:
         default:

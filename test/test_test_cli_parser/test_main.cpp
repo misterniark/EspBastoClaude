@@ -78,6 +78,22 @@ static void test_stop_and_status(void)
     TEST_ASSERT_EQUAL(TCLI_STATUS, test_cli_parse("status").type);
 }
 
+/* --- mem / screen <n> (outillage de détection de fuite) --- */
+static void test_mem_and_screen(void)
+{
+    TEST_ASSERT_EQUAL(TCLI_MEM, test_cli_parse("mem").type);
+    /* « mem » est un préfixe de rien d'autre, mais vérifions la
+     * frontière de mot pour ne pas capter une commande future */
+    TEST_ASSERT_EQUAL(TCLI_ERROR, test_cli_parse("memoire").type);
+
+    TestCliCmd c = test_cli_parse("screen 2");
+    TEST_ASSERT_EQUAL(TCLI_SCREEN, c.type);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 2.0f, c.a);
+
+    TEST_ASSERT_EQUAL(TCLI_ERROR, test_cli_parse("screen").type);
+    TEST_ASSERT_EQUAL(TCLI_ERROR, test_cli_parse("screen 1 2").type);
+}
+
 /* --- Espaces de tête/queue tolérés --- */
 static void test_whitespace_tolerance(void)
 {
@@ -112,6 +128,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_thermo);
     RUN_TEST(test_consigne_and_timer);
     RUN_TEST(test_stop_and_status);
+    RUN_TEST(test_mem_and_screen);
     RUN_TEST(test_whitespace_tolerance);
     RUN_TEST(test_empty_and_invalid);
     return UNITY_END();

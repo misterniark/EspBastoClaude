@@ -65,6 +65,13 @@ static void on_screen_delete(lv_event_t *e)
 
 void scr_search_create()
 {
+    /* Nettoyer un timer résiduel d'une instance précédente encore
+     * vivante — voir le commentaire de scr_thermostat_create(). */
+    if (check_timer) {
+        lv_timer_del(check_timer);
+        check_timer = nullptr;
+    }
+
     /* Créer l'écran */
     scr = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(scr, cl_bg, 0);

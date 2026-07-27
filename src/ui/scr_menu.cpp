@@ -204,6 +204,12 @@ static void update_cb(lv_timer_t *timer)
 
 void scr_menu_create()
 {
+    /* Nettoyer une instance précédente encore vivante (double appui
+     * pendant le fondu de chargement) : sans cela son timer devient
+     * orphelin dès que le pointeur statique est écrasé ci-dessous.
+     * Voir le commentaire détaillé dans scr_thermostat_create(). */
+    cleanup_menu();
+
     /* Créer l'écran */
     scr = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(scr, cl_bg, 0);

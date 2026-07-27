@@ -65,6 +65,13 @@ static void flame_stop_anim()
 
 lv_obj_t* header_create(lv_obj_t *parent)
 {
+    /* Nouveau bandeau : l'ancien label de chauffage a été détruit avec
+     * son écran, et l'animation qui le faisait pulser est morte avec
+     * lui. Sans cette remise à zéro, le drapeau restait à « en cours »
+     * et flame_start_anim() se désistait : la flamme ne pulsait plus
+     * jamais après une navigation en cours de chauffe. */
+    flame_anim_running = false;
+
     /* Conteneur header */
     lv_obj_t *header = lv_obj_create(parent);
     lv_obj_set_size(header, SCREEN_WIDTH, HEADER_HEIGHT);

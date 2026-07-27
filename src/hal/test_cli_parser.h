@@ -35,7 +35,12 @@ enum TestCliCmdType {
     TCLI_CONSIGNE, /* consigne <cible> → a = cible */
     TCLI_TIMER,    /* timer <min>      → a = durée en minutes */
     TCLI_STOP,     /* stop */
-    TCLI_STATUS    /* status */
+    TCLI_STATUS,   /* status */
+    TCLI_MEM,      /* mem            → timers vivants, mémoire LVGL et tas */
+    TCLI_SCREEN,   /* screen <n>     → a = écran à créer (voir test_cli.cpp) */
+    TCLI_SCREENDUP /* screendup <n>  → deux créations DOS À DOS du même écran,
+                    * sans laisser LVGL détruire la première entre les deux :
+                    * reproduction fidèle du double appui pendant le fondu */
 };
 
 /** Commande analysée */
@@ -155,6 +160,30 @@ inline TestCliCmd test_cli_parse(const char *line)
 
     if ((rest = tcli_match_word(p, "status")) != NULL && tcli_at_end(rest)) {
         cmd.type = TCLI_STATUS;
+        return cmd;
+    }
+
+    if ((rest = tcli_match_word(p, "mem")) != NULL && tcli_at_end(rest)) {
+        cmd.type = TCLI_MEM;
+        return cmd;
+    }
+
+    /* « screendup » AVANT « screen » : sinon tcli_match_word("screen")
+     * échouerait de toute façon sur la frontière de mot, mais l'ordre
+     * explicite évite toute ambiguïté si les noms évoluent. */
+    if ((rest = tcli_match_word(p, "screendup")) != NULL) {
+        if ((rest = tcli_parse_float(rest, &cmd.a)) != NULL
+            && tcli_at_end(rest)) {
+            cmd.type = TCLI_SCREENDUP;
+        }
+        return cmd;
+    }
+
+    if ((rest = tcli_match_word(p, "screen")) != NULL) {
+        if ((rest = tcli_parse_float(rest, &cmd.a)) != NULL
+            && tcli_at_end(rest)) {
+            cmd.type = TCLI_SCREEN;
+        }
         return cmd;
     }
 

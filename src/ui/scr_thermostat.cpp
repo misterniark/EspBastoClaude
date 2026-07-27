@@ -388,6 +388,17 @@ static void update_timer_cb(lv_timer_t *timer)
 
 void scr_thermostat_create()
 {
+    /* Une instance précédente de cet écran peut être encore vivante :
+     * LVGL ne bloque pas le tactile pendant le fondu de chargement
+     * (ANIM_SCREEN_FADE, 250 ms), donc un double appui crée deux
+     * instances. Les pointeurs de timers étant statiques, la seconde
+     * création écrasait ceux de la première — dont le callback
+     * LV_EVENT_DELETE se désiste (il ne reconnaît plus `scr`). Résultat :
+     * un timer orphelin tournant à vie, plus la perte d'une sauvegarde
+     * NVS différée. Sur des mois d'usage quotidien, ces fuites érodent
+     * le tas LVGL. On nettoie donc AVANT d'écraser quoi que ce soit. */
+    cleanup_thermostat();
+
     /* --- Charger les valeurs sauvegardées --- */
     local_setpoint = storage_load_setpoint();
     local_hysteresis = storage_load_hysteresis();
