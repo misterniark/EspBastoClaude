@@ -242,6 +242,88 @@ static void ds_read_failed()
     }
 }
 
+#ifdef TEST_CLI
+void sensor_diag_onewire(int burst_reads)
+{
+    /* --- État électrique du bus ---
+     * Mesurer le niveau « flottant » après un simple pinMode(INPUT) ne
+     * veut RIEN dire : la capacité du câble garde la charge du pull-up
+     * précédent pendant des millisecondes et la ligne semble tirée
+     * haut même sans résistance. On décharge donc le bus par une
+     * sortie basse brève, puis on relâche et on regarde qui le
+     * remonte, et à quelle vitesse. Avec une résistance externe de
+     * 4,7 kΩ la remontée est immédiate (< 1 µs) ; sans elle, seules
+     * les fuites remontent la ligne, ce qui prend des millisecondes. */
+    pinMode(PIN_ONEWIRE, OUTPUT);
+    digitalWrite(PIN_ONEWIRE, LOW);
+    delayMicroseconds(500);      /* décharger la capacité du câble */
+    pinMode(PIN_ONEWIRE, INPUT); /* haute impédance, sans rappel */
+    delayMicroseconds(200);
+    int fast_rise = digitalRead(PIN_ONEWIRE);
+    delay(5);
+    int slow_rise = digitalRead(PIN_ONEWIRE);
+
+    pinMode(PIN_ONEWIRE, INPUT_PULLUP);
+    delay(2);
+    int pulled = digitalRead(PIN_ONEWIRE);
+
+    Serial.printf("[DIAG] bus pin=%d remontee_200us=%d remontee_5ms=%d "
+                  "pullup_interne=%d -> %s\n",
+                  PIN_ONEWIRE, fast_rise, slow_rise, pulled,
+                  fast_rise ? "resistance externe PRESENTE (remontee rapide)"
+                            : "PAS de resistance externe (pull-up interne seul)");
+
+    /* --- Présence et identité de la sonde --- */
+    bool present = onewire.reset();
+    uint8_t addr[8] = {0};
+    onewire.reset_search();
+    bool found = onewire.search(addr);
+    Serial.printf("[DIAG] presence=%d rom_trouvee=%d", (int)present, (int)found);
+    if (found) {
+        Serial.print(" ROM=");
+        for (int i = 0; i < 8; i++) Serial.printf("%02X", addr[i]);
+        Serial.printf(" crc_ok=%d", (int)(OneWire::crc8(addr, 7) == addr[7]));
+    }
+    Serial.println();
+
+    if (!found) {
+        Serial.println("[DIAG] Sonde absente : rafale de lectures ignoree");
+        return;
+    }
+
+    /* --- Rafale de lectures : taux d'échec ---
+     * Lecture PAR ADRESSE : getTempCByIndex() s'appuie sur la liste
+     * interne peuplée par DallasTemperature::begin(), que ce projet
+     * n'appelle jamais (elle contient des delay() bloquants) — elle
+     * échouerait donc systématiquement. */
+    ds.setResolution(addr, 12);
+    ds.setWaitForConversion(true); /* Diagnostic bloquant, hors boucle */
+    int failures = 0;
+    float sum = 0.0f, mini = 999.0f, maxi = -999.0f;
+    for (int i = 0; i < burst_reads; i++) {
+        ds.requestTemperaturesByAddress(addr);
+        float t = ds.getTempC(addr, 1);
+        if (!ds18b20_reading_is_valid(t)) {
+            failures++;
+        } else {
+            sum += t;
+            if (t < mini) mini = t;
+            if (t > maxi) maxi = t;
+        }
+    }
+    ds.setWaitForConversion(false); /* Rétablir le mode non bloquant */
+
+    int ok = burst_reads - failures;
+    Serial.printf("[DIAG] rafale : %d/%d valides (%d echecs)", ok, burst_reads,
+                  failures);
+    if (ok > 0) {
+        Serial.printf(" moy=%.2f min=%.2f max=%.2f amplitude=%.2f",
+                      sum / ok, mini, maxi, maxi - mini);
+    }
+    Serial.println();
+}
+#endif /* TEST_CLI */
+
 bool sensor_init()
 {
     if (!ds_probe()) {

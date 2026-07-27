@@ -38,6 +38,7 @@ enum TestCliCmdType {
     TCLI_STATUS,   /* status */
     TCLI_MEM,      /* mem            → timers vivants, mémoire LVGL et tas */
     TCLI_SCREEN,   /* screen <n>     → a = écran à créer (voir test_cli.cpp) */
+    TCLI_OWDIAG,   /* owdiag <n>     → diagnostic du bus OneWire, n lectures */
     TCLI_SCREENDUP /* screendup <n>  → deux créations DOS À DOS du même écran,
                     * sans laisser LVGL détruire la première entre les deux :
                     * reproduction fidèle du double appui pendant le fondu */
@@ -165,6 +166,14 @@ inline TestCliCmd test_cli_parse(const char *line)
 
     if ((rest = tcli_match_word(p, "mem")) != NULL && tcli_at_end(rest)) {
         cmd.type = TCLI_MEM;
+        return cmd;
+    }
+
+    if ((rest = tcli_match_word(p, "owdiag")) != NULL) {
+        if ((rest = tcli_parse_float(rest, &cmd.a)) != NULL
+            && tcli_at_end(rest)) {
+            cmd.type = TCLI_OWDIAG;
+        }
         return cmd;
     }
 

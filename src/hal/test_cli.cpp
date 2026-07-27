@@ -152,6 +152,13 @@ static void execute_line(const char *line)
             break;
         }
 
+        case TCLI_OWDIAG:
+            /* Diagnostic du câblage de la sonde : sert notamment à
+             * vérifier la présence d'une vraie résistance de rappel
+             * externe, et à comparer le taux d'échec avant/après. */
+            sensor_diag_onewire((int)cmd.a);
+            break;
+
         case TCLI_SCREEN:
         case TCLI_SCREENDUP: {
             /* screendup : DEUX créations dos à dos, sans repasser par

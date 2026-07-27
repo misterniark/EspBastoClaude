@@ -41,6 +41,62 @@ demarrer puis arreter le chauffage. Pour reanimer la cible : corriger
 l'anti-rebond, epingler la dependance Git `XPT2046_Touchscreen`, puis
 revalider integralement au banc.
 
+## Mise en service : verifications materielles obligatoires
+
+Trois points que le logiciel ne peut pas compenser. A traiter AVANT
+toute installation reelle sur le Webasto.
+
+### 1. Resistance de rappel 4,7 kOhm sur le bus de la sonde
+
+Le module Crowtail One Wire 2.0 n'embarque AUCUNE resistance de rappel.
+Le firmware arme le pull-up interne de l'ESP32 (~45 kOhm), ce qui suffit
+sur un banc a cable court, mais reste fragile avec un cable long et les
+parasites d'allumage du Webasto : fronts mous, erreurs CRC, et au bout
+de 90 secondes sans mesure valide le chauffage est coupe par securite.
+
+**A faire** : souder une resistance de **4,7 kOhm entre DATA et 3V3**
+du connecteur UART1-OUT (DATA = IO18).
+
+**Verification** (firmware de banc, env `crowpanel_test`) :
+
+```bash
+pio run -e crowpanel_test --target upload
+```
+
+puis envoyer `owdiag 30` sur le port serie. Comparer avant/apres :
+
+| Mesure | Sans resistance (releve du 27/07/2026) | Avec resistance attendue |
+|---|---|---|
+| `remontee_200us` | 0 | **1** |
+| `remontee_5ms` | 0 | 1 |
+| rafale | 30/30 valides, amplitude 0,12 C | 30/30, amplitude stable |
+
+Le critere decisif est `remontee_200us` : une resistance de 4,7 kOhm
+remonte la ligne en moins d'une microseconde, le pull-up interne seul
+laisse le bus a zero pendant des millisecondes.
+
+Refaire la mesure **cable definitif installe et Webasto en marche** :
+c'est la seule condition qui reproduit les parasites reels.
+
+### 2. Resistance de rappel bas sur la commande du relais
+
+Entre le reset de l'ESP32 et la premiere instruction du firmware, la
+broche de commande du relais est en haute impedance : son etat depend
+du module. Une resistance de **10 kOhm entre la broche de commande et
+la masse** (pour un module actif-HIGH) garantit le relais ouvert
+pendant cette fenetre, y compris lors d'un brownout.
+
+### 3. Polarite du module relais
+
+Le firmware suppose `RELAY_ACTIVE_HIGH = true` (`ESPBastoRelay/src/config.h`),
+alors que la plupart des modules relais 5 V du commerce sont **actifs
+LOW**. Une polarite inversee signifie chauffage allume au repos.
+
+**A verifier, Webasto DEBRANCHE** : alimenter le relais seul et
+observer la LED du module (ou mesurer la continuite entre COM et NO).
+Au demarrage, le relais doit etre OUVERT. S'il se ferme, passer
+`RELAY_ACTIVE_HIGH` a `false` et reflasher.
+
 ## Fonctionnalites
 
 - **3 modes de chauffage** : thermostat avec hysteresis, minuteur, consigne simple

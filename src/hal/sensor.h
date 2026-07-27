@@ -138,6 +138,24 @@ void sensor_sim_off();
 
 /** Retourne true si la simulation est active. */
 bool sensor_sim_is_active();
+
+/**
+ * Diagnostic électrique du bus OneWire (CrowPanel uniquement).
+ *
+ * Sert à valider le câblage, en particulier la présence d'une vraie
+ * résistance de rappel externe (4,7 kΩ entre DATA et 3V3) :
+ *   - niveau du bus en entrée FLOTTANTE : 1 = résistance externe
+ *     présente, 0 = seul le pull-up interne (~45 kΩ) tient le bus,
+ *     ce qui est fragile avec un câble long et les parasites du
+ *     Webasto ;
+ *   - impulsion de présence et adresse ROM de la sonde ;
+ *   - taux d'échec sur une rafale de lectures, à comparer avant et
+ *     après l'ajout de la résistance.
+ *
+ * Affiche le résultat sur la console série. Bloquant (~1 s par
+ * lecture de la rafale) : réservé au banc.
+ */
+void sensor_diag_onewire(int burst_reads);
 #endif /* TEST_CLI */
 
 #endif /* HAL_SENSOR_H */
