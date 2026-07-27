@@ -39,8 +39,12 @@ static const char *heater_state_name(HeaterState s)
 /** Affiche l'état complet du système (réponse à `status`). */
 static void print_status()
 {
-    Serial.printf("[TCLI] status: heater=%s thermo=%d consigne=%d timer=%d "
+    /* t=millis() : permet au banc hôte de distinguer un gel de la boucle
+     * (deltas device irréguliers) d'un retard de transport USB CDC
+     * (deltas device réguliers mais arrivée hôte tardive). */
+    Serial.printf("[TCLI] status: t=%lu heater=%s thermo=%d consigne=%d timer=%d "
                   "relay=%d sim=%d raw=%.2f ema=%.2f\n",
+                  (unsigned long)millis(),
                   heater_state_name(heater_get_state()),
                   (int)thermostat_is_active(),
                   (int)setpoint_mode_is_active(),
