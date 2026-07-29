@@ -98,7 +98,11 @@ static void process_event(uint8_t msg_type)
 
         case ACK_OFF:
             if (current_state == HEATER_HEATING) {
-                enter_locked("[HEATER] HEATING -> LOCKED (verrou 3 min)");
+                /* Durée non citée : elle appartient au relais et varie
+                 * selon l'origine du verrou (extinction à chaud ou
+                 * démarrage). Le contrôleur attend l'ACK_UNLOCKED, ou
+                 * son filet de sécurité. */
+                enter_locked("[HEATER] HEATING -> LOCKED (verrou relais)");
             }
             break;
 
