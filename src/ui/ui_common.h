@@ -72,6 +72,14 @@ void ui_common_init();
 void ui_set_locked(lv_obj_t *obj, bool locked);
 
 /**
+ * Marque (ou démarque) une tuile de mode comme ACTIVE : bordure
+ * d'accent colorée. Sert à montrer qu'un mode tourne même lorsqu'il ne
+ * chauffe pas à cet instant — un thermostat passe l'essentiel de son
+ * temps ainsi (voir ui/mode_status.h).
+ */
+void ui_set_active(lv_obj_t *obj, bool active);
+
+/**
  * Crée un bouton standard avec label centré.
  * Applique automatiquement le style style_btn.
  *

@@ -23,6 +23,9 @@
 #include "../hal/battery.h"
 #include "../config.h"
 #include "../core/heater_fsm.h"
+#include "../core/mode_thermostat.h"
+#include "../core/mode_timer.h"
+#include "../core/mode_setpoint.h"
 #include "../hal/sensor.h"
 #include "../comm/relay_link.h"
 #include <lvgl.h>
@@ -103,11 +106,26 @@ static void on_tile_setpoint(lv_event_t *e)
     scr_setpoint_create();
 }
 
-/** Callback du bouton ARRÊTER : envoie HEAT_OFF */
+/**
+ * Callback du bouton ARRÊTER : arrête le MODE actif, pas seulement le
+ * chauffage. Envoyer un simple HEAT_OFF ne suffisait pas — le
+ * thermostat, toujours actif, redemandait l'allumage à la lecture
+ * suivante. Chaque arrêt de mode coupe déjà le chauffage.
+ */
 static void on_stop(lv_event_t *e)
 {
     (void)e;
-    heater_request_off();
+
+    bool stopped = false;
+    if (thermostat_is_active())    { thermostat_stop();    stopped = true; }
+    if (setpoint_mode_is_active()) { setpoint_mode_stop(); stopped = true; }
+    if (timer_mode_is_running())   { timer_mode_stop();    stopped = true; }
+
+    /* Filet : chauffage en marche sans aucun mode actif (override
+     * manuel du relais, ou ACK perdu) — couper quand même. */
+    if (!stopped) {
+        heater_force_off();
+    }
 }
 
 /* ==========================================
@@ -182,14 +200,30 @@ static void update_cb(lv_timer_t *timer)
     header_set_connected(relay_is_connected());
     header_set_locked(heater_get_state() == HEATER_LOCKED);
 
-    /* Bouton ARRÊTER : visible uniquement si chauffage actif */
+    /* Quel mode tourne ? Un mode actif ne chauffe pas forcément à cet
+     * instant (température atteinte, zone morte, verrou) — c'est
+     * justement ce que l'ancien menu ne montrait pas. */
+    bool thermo_on = thermostat_is_active();
+    bool timer_on  = timer_mode_is_running();
+    bool setpt_on  = setpoint_mode_is_active();
+    bool any_mode  = thermo_on || timer_on || setpt_on;
+
+    /* Bouton ARRÊTER : visible dès qu'un mode tourne, pas seulement
+     * pendant la chauffe. Sinon un thermostat actif mais en veille
+     * était impossible à arrêter depuis le menu — il fallait rentrer
+     * dans son écran. */
     if (btn_stop) {
-        if (heater_get_state() == HEATER_HEATING) {
+        if (any_mode || heater_get_state() == HEATER_HEATING) {
             lv_obj_clear_flag(btn_stop, LV_OBJ_FLAG_HIDDEN);
         } else {
             lv_obj_add_flag(btn_stop, LV_OBJ_FLAG_HIDDEN);
         }
     }
+
+    /* Tuile du mode actif mise en évidence (bordure d'accent) */
+    if (tile_thermo) ui_set_active(tile_thermo, thermo_on);
+    if (tile_timer)  ui_set_active(tile_timer, timer_on);
+    if (tile_setpt)  ui_set_active(tile_setpt, setpt_on);
 
     /* Verrouillage : griser les tuiles si LOCKED */
     bool locked = (heater_get_state() == HEATER_LOCKED);

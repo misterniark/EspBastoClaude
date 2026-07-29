@@ -22,6 +22,7 @@
 #include "ui_common.h"
 #include "ui_header.h"
 #include "ui_action_bar.h"
+#include "mode_status.h"
 #include "../config.h"
 #include "../core/heater_fsm.h"
 #include "../core/mode_thermostat.h"
@@ -52,6 +53,9 @@ static lv_obj_t *lbl_temp = NULL;
 
 /** Label cible sous la température (ex: "cible: 20.0°C") */
 static lv_obj_t *lbl_target = NULL;
+
+/** Ligne d'état du mode sous l'arc (chauffe / atteinte / veille) */
+static lv_obj_t *lbl_status = NULL;
 
 /** Label valeur de la consigne dans la rangée de réglage */
 static lv_obj_t *lbl_setpoint_val = NULL;
@@ -361,6 +365,17 @@ static void update_timer_cb(lv_timer_t *timer)
         lv_label_set_text(lbl_target, buf);
     }
 
+    /* Ligne d'état : lève l'ambiguïté « mode actif mais rien ne se
+     * passe » (voir ui/mode_status.h) */
+    if (lbl_status) {
+        ModeUiStatus st = mode_status_compute(
+            thermostat_is_active(), heating,
+            heater_get_state() == HEATER_LOCKED, temp, local_setpoint);
+        lv_label_set_text(lbl_status, mode_status_text(st));
+        lv_obj_set_style_text_color(
+            lbl_status, (st == MODE_UI_HEATING) ? cl_amber : cl_text_dim, 0);
+    }
+
     /* Mise à jour de la valeur de l'arc (mappée 10-35°C) */
     if (arc) {
         int arc_val = (int)((temp - SETPOINT_MIN) / (SETPOINT_MAX - SETPOINT_MIN) * 100);
@@ -472,6 +487,16 @@ void scr_thermostat_create()
         lv_label_set_text(lbl_target, buf);
     }
     lv_obj_align(lbl_target, LV_ALIGN_CENTER, 0, 12);
+
+    /* Ligne d'état sous l'arc : dit explicitement ce que fait le mode
+     * quand il ne chauffe pas (température atteinte, veille, verrou).
+     * Sans elle, un thermostat actif mais au repos était indiscernable
+     * d'un mode arrêté. Voir ui/mode_status.h. */
+    lbl_status = lv_label_create(arc_cont);
+    lv_obj_set_style_text_font(lbl_status, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(lbl_status, cl_text_dim, 0);
+    lv_label_set_text(lbl_status, "");
+    lv_obj_align(lbl_status, LV_ALIGN_CENTER, 0, 32);
 
     /* --- Rangée CONSIGNE : label + [-] + valeur + [+] --- */
     lv_obj_t *row_sp = lv_obj_create(content);

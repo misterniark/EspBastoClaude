@@ -98,6 +98,16 @@ void ui_common_init()
     Serial.println("[UI] Thème Muted Industrial initialisé");
 }
 
+void ui_set_active(lv_obj_t *obj, bool active)
+{
+    /* La tuile porte une bordure d'accent à gauche (style Muted
+     * Industrial) : la colorer en cyan signale le mode actif, sans
+     * ajouter d'élément ni bousculer la mise en page. */
+    lv_obj_set_style_border_color(obj, active ? cl_cyan
+                                              : lv_color_hex(COLOR_BORDER), 0);
+    lv_obj_set_style_border_width(obj, active ? 5 : 3, 0);
+}
+
 void ui_set_locked(lv_obj_t *obj, bool locked)
 {
     if (locked) {
